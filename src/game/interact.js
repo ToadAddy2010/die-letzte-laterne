@@ -1,5 +1,6 @@
 import * as THREE from '../../vendor/three.module.js';
 import { G } from './state.js';
+import { SCANS } from '../world/scans.js';
 import { Input } from '../core/input.js';
 import { Kit, MAT } from '../core/gfx.js';
 import { POIS, POI, REGIONS } from '../data/world.js';
@@ -23,7 +24,7 @@ export class Interact {
     this.world = []; this.pick = []; this.dun = []; this.current = null;
     this.buildWorld();
   }
-  obj(list, o) { o.y = o.y ?? heightAt(o.x, o.z); const m = new THREE.Mesh(this.geo[o.geo], MAT.solid); m.position.set(o.x, o.y + (o.float || 0), o.z); m.rotation.y = o.ry || 0; m.visible = false; this.scene.add(m); o.m = m; list.push(o); return o; }
+  obj(list, o) { o.y = o.y ?? heightAt(o.x, o.z); const scan = o.geo === 'chest' && SCANS.treasure_chest, m = new THREE.Mesh(scan ? scan.hi : this.geo[o.geo], scan ? scan.mat : MAT.solid); m.castShadow = !!scan; m.position.set(o.x, o.y + (o.float || 0), o.z); m.rotation.y = o.ry || 0; m.visible = false; this.scene.add(m); o.m = m; list.push(o); return o; }
   buildWorld() {
     const r = RNG(4242);
     const find = (cx, cz, spread) => {

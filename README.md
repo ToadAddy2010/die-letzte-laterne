@@ -1,6 +1,6 @@
 # Die Letzte Laterne
 
-Ein eigenes Dark-Fantasy-Open-World-RPG in verpixelter 90er-Optik, das direkt im Browser läuft.
+Ein eigenes Dark-Fantasy-Open-World-RPG, das direkt im Browser läuft.
 Der Mond schläft seit tausend Jahren nicht mehr, und du trägst die letzte Laterne des Reiches.
 
 ## Steuerung
@@ -14,4 +14,4 @@ Spielstände bleiben nur im eigenen Browser gespeichert.
 ## Lizenzen
 
 Three.js steht unter der MIT-Lizenz, die Schriften Pixelify Sans und VT323 unter der SIL Open Font License.
-Die Lizenztexte liegen im Ordner `vendor`.
+Die Lizenztexte liegen im Ordner `vendor`. Fotoscans, Figuren und Animationen stehen unter CC0. Die Goblin- und Dämonenmodelle in `assets/chars/monsters` stammen von Quaternius, stehen unter der Quaternius Asset License und dürfen nicht als eigene Assets entnommen oder weitergegeben werden. Alle Quellen stehen in `assets/CREDITS.md`.

@@ -1,6 +1,12 @@
 import * as THREE from '../vendor/three.module.js';
 import { G } from './game/state.js';
-import { Retro, GFX, Kit } from './core/gfx.js';
+import { Retro, GFX, Kit, loadPBR } from './core/gfx.js';
+import { HUMAN, loadCharacters } from './actors/skinned.js';
+import { makeModel, setFlash } from './actors/models.js';
+import { loadMonsters } from './actors/monsters.js';
+import { loadScans } from './world/scans.js';
+import { Profiles } from './game/profiles.js';
+import { ProfileUI } from './ui/profileui.js';
 import { Input } from './core/input.js';
 import { UI } from './ui/ui.js';
 import { H, buildTerrain, Terrain, roadLines, regionAt, heightAt } from './world/terrain.js';
@@ -29,7 +35,7 @@ import { ITEMS } from './data/items.js';
 import { nextFrame } from './core/util.js';
 
 const outdoorFog = () => (G.settings.low ? .0056 : .0021);
-const SAVE = i => `letzte-laterne-save-${i}`;
+const SAVE = i => G.profiles.key(i);
 const SETTINGS = 'letzte-laterne-settings';
 const store = {
   get(k) { try { return localStorage.getItem(k); } catch { return null; } },
@@ -54,7 +60,11 @@ const game = G.game = {
       p: { x: w.x, z: w.z, yaw: P.yaw, camYaw: P.camYaw, level: P.level, xp: P.xp, pts: P.pts, kraft: P.kraft, geist: P.geist, ausdauer: P.ausdauer, hp: P.hp, mp: P.mp, gold: P.gold, inv: P.inv, equip: P.equip, spells: P.spells, lastShrine: P.lastShrine, flame: P.flame },
     };
   },
-  save(i) { if (G.net?.isGuest) { G.net.saveChar(); return; } store.set(SAVE(i), JSON.stringify(this.snapshot())); },
+  save(i) {
+    if (G.net?.isGuest) { G.net.saveChar(); return; }
+    if (!store.set(SAVE(i), JSON.stringify(this.snapshot())) && !this.fullWarned) { this.fullWarned = true; G.ui.toast('Speichern fehlgeschlagen: Der Browser-Speicher ist voll', 'warn'); }
+  },
+  refreshTitle() { G.ui.title(true, !!store.get(SAVE(0))); },
   autosave() { if (G.mode !== 'menu' && G.player && !G.player.dead) this.save(0); },
   slotInfo(i) {
     const s = store.get(SAVE(i)); if (!s) return null;
@@ -241,6 +251,7 @@ async function boot() {
   if (oldGfx || (G.settings.gfx ?? 0) < 3) { if (!matchMedia('(pointer: coarse)').matches) G.settings.lines = 1080; else G.settings.lines = Math.max(G.settings.lines, 540); G.settings.gfx = 3; G.settings.retro = false; if (store.get(SETTINGS)) store.set(SETTINGS, JSON.stringify(G.settings)); }
   if (!store.get(SETTINGS) && matchMedia('(pointer: coarse)').matches) { const short = Math.min(innerWidth, innerHeight); G.settings.lines = short < 560 ? 540 : 720; G.settings.low = short < 560; }
   G.test = new URLSearchParams(location.search).has('test');
+  G.profiles = new Profiles(); G.profiles.init(G.test); G.profileUI = new ProfileUI();
   G.ui = new UI();
   G.ui.loading(.02);
   await nextFrame();
@@ -254,6 +265,13 @@ async function boot() {
   G.worldGroup = new THREE.Group(); G.scene.add(G.worldGroup);
   const mark = (n, t = performance.now()) => { (G.bootLog ??= {})[n] = Math.round(t - (G.bootT ?? t)); G.bootT = t; };
   mark('start');
+  if (!G.settings.low && !matchMedia('(pointer: coarse)').matches) {
+    try { await loadPBR(k => G.ui.loading(.02 + k * .03, 'Materialien werden geladen')); } catch (e) { console.warn('Foto-Materialien nicht geladen', e); }
+    try { await loadCharacters(k => G.ui.loading(.05 + k * .03, 'Figuren werden geladen')); } catch (e) { console.warn('Figuren nicht geladen', e); }
+    try { await loadMonsters(k => G.ui.loading(.08 + k * .01, 'Monster erwachen')); } catch (e) { console.warn('Monster nicht geladen', e); }
+    try { await loadScans(k => G.ui.loading(.08 + k * .02, 'Welt wird eingerichtet')); } catch (e) { console.warn('Fotoscans nicht geladen', e); }
+    mark('materials');
+  }
   await buildTerrain(G.ui.loading.bind(G.ui));
   mark('terrain');
   G.heights = H; G.roadLines = roadLines;
@@ -292,15 +310,28 @@ async function boot() {
   G.player.place(5, 186);
   G.terrain.flush(0, 180); G.props.update(0, 180, true); G.structures.update(0, 180);
   mark('stream');
+  warmMonsters();
   G.skySnap = true;
   await nextFrame();
   G.ui.doneLoading();
   G.mode = 'menu';
   G.ui.title(true, !!store.get(SAVE(0)));
   if (G.net.available && (G.net.isInvited || G.netui.invite())) G.netui.joinPane();
+  else if (!G.test) G.profileUI.gate();
   if (G.test) window.__ll = { G, Input, game, QUESTS, POI, POIS, frame: step };
   last = performance.now();
   requestAnimationFrame(loop);
+}
+
+/** Übersetzt die Monster-Shader beim Laden, damit der erste Kampf nicht hakt. */
+function warmMonsters() {
+  if (!HUMAN.ready) return;
+  try {
+    const w = makeModel({ kind: 'wolf', scale: .01 });
+    w.root.position.set(G.camera.position.x, -400, G.camera.position.z); G.scene.add(w.root);
+    G.retro.render(G.scene, G.camera); setFlash(w, true); G.retro.render(G.scene, G.camera); setFlash(w, false);
+    G.scene.remove(w.root);
+  } catch (e) { console.warn('Monster-Shader nicht vorbereitet', e); }
 }
 
 let last = 0, tick = 0;

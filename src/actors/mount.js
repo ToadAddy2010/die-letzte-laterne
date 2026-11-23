@@ -337,7 +337,7 @@ export class Mount {
   seatOn(model, yaw) {
     this.root.updateMatrixWorld(true);
     this.saddle.getWorldPosition(v);
-    model.root.position.set(v.x, v.y - .9, v.z);
+    model.root.position.set(v.x, v.y - (model.seatY ?? .9), v.z);
     model.root.rotation.set(this.pitch, yaw, this.roll, 'YXZ');
     if (model.shadow) model.shadow.visible = false;
   }

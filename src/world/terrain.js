@@ -170,7 +170,7 @@ let aoAt = null;
 export const setTerrainAO = fn => { aoAt = fn; };
 
 function gridGeometry(size, step, offsetY, x0, z0) {
-  const v = Math.round(size / step) + 1, pos = new Float32Array(v * v * 3), nor = new Float32Array(v * v * 3), col = new Float32Array(v * v * 3), uv = new Float32Array(v * v * 2), rough = new Float32Array(v * v), idx = [];
+  const v = Math.round(size / step) + 1, pos = new Float32Array(v * v * 3), nor = new Float32Array(v * v * 3), col = new Float32Array(v * v * 3), uv = new Float32Array(v * v * 2), rough = new Float32Array(v * v), bio = new Float32Array(v * v * 2), idx = [];
   let a = 0;
   for (let q = 0; q < v; q++) for (let p = 0; p < v; p++, a++) {
     const x = x0 + p * step, z = z0 + q * step, gi = clamp(Math.round((x + HALF) / CELL), 0, N), gj = clamp(Math.round((z + HALF) / CELL), 0, N), k = id(gi, gj);
@@ -182,6 +182,7 @@ function gridGeometry(size, step, offsetY, x0, z0) {
     col[a * 3] = LIN[COL[k * 3]] * ao; col[a * 3 + 1] = LIN[COL[k * 3 + 1]] * ao; col[a * 3 + 2] = LIN[COL[k * 3 + 2]] * (ao * .9 + .1);
     uv[a * 2] = x * .16; uv[a * 2 + 1] = z * .16;
     const rid = REGIONS[REG[k]].id; rough[a] = rid === 'desert' ? .08 : rid === 'frost' ? .16 : rid === 'ash' ? .35 : 1;
+    bio[a * 2] = rid === 'desert' ? 1 : 0; bio[a * 2 + 1] = rid === 'frost' ? 1 : smooth(74, 100, H[k]);
     if (p < v - 1 && q < v - 1) { const b = a + 1, c = a + v, d = c + 1; idx.push(a, c, b, b, c, d); }
   }
   const g = new THREE.BufferGeometry();
@@ -190,6 +191,7 @@ function gridGeometry(size, step, offsetY, x0, z0) {
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
   g.setAttribute('aRough', new THREE.BufferAttribute(rough, 1));
+  g.setAttribute('aBio', new THREE.BufferAttribute(bio, 2));
   g.setIndex(idx);
   g.computeBoundingSphere();
   return g;

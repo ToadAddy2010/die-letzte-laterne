@@ -145,13 +145,50 @@ const waterTex = canvasTex(64, (g, S) => {
   }
 }, 80, 80);
 
+/* ---------- Echte Foto-Materialien (CC0, Poly Haven) ---------- */
+const PBR_NAMES = ['wood', 'bark', 'stone', 'brick', 'tile', 'plaster', 'cloth', 'metal', 'leaf', 'rock', 'grass', 'dirt', 'sand', 'snow'], PBR_SIZE = 1024, ASSET_V = 1;
+const emptyArray = () => { const t = new THREE.DataArrayTexture(new Uint8Array(PBR_NAMES.length * 4).fill(128), 1, 1, PBR_NAMES.length); t.needsUpdate = true; return t; };
+
+/** Lädt alle Materialien. Klappt das nicht, bleiben die eingebauten Oberflächen aktiv. */
+export async function loadPBR(progress) {
+  const N = PBR_NAMES.length, S = PBR_SIZE, col = new Uint8Array(S * S * N * 4), nor = new Uint8Array(S * S * N * 4), cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const g = cv.getContext('2d', { willReadFrequently: true });
+  const read = async name => {
+    const r = await fetch(new URL(`../../assets/tex/${name}.webp?v=${ASSET_V}`, import.meta.url));
+    if (!r.ok) throw new Error(`Material fehlt: ${name}`);
+    const b = await createImageBitmap(await r.blob(), { colorSpaceConversion: 'none', premultiplyAlpha: 'none' });
+    g.drawImage(b, 0, 0, S, S); b.close();
+    return g.getImageData(0, 0, S, S).data;
+  };
+  const toLin = v => { const c = v / 255; return c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4); };
+  for (let i = 0; i < N; i++) {
+    const c = await read(`${PBR_NAMES[i]}_c`); col.set(c, i * S * S * 4);
+    let r = 0, gg = 0, b = 0, n = 0;
+    for (let p = 0; p < c.length; p += 4 * 37) { r += toLin(c[p]); gg += toLin(c[p + 1]); b += toLin(c[p + 2]); n++; }
+    // Das Foto liefert Struktur und Farbspiel, die Grundfarbe kommt weiter vom Modell.
+    const lum = (r * .3 + gg * .55 + b * .15) / n;
+    GFX.pm.value[i].set(r / n * .88 + lum * .12, gg / n * .88 + lum * .12, b / n * .88 + lum * .12);
+    nor.set(await read(`${PBR_NAMES[i]}_n`), i * S * S * 4);
+    progress?.((i + 1) / N);
+  }
+  const make = (data, srgb) => {
+    const t = new THREE.DataArrayTexture(data, S, S, N);
+    t.format = THREE.RGBAFormat; t.type = THREE.UnsignedByteType; t.wrapS = t.wrapT = THREE.RepeatWrapping;
+    t.magFilter = THREE.LinearFilter; t.minFilter = THREE.LinearMipmapLinearFilter; t.generateMipmaps = true; t.anisotropy = 8;
+    t.colorSpace = srgb ? THREE.SRGBColorSpace : THREE.NoColorSpace; t.needsUpdate = true;
+    return t;
+  };
+  GFX.pc.value = make(col, true); GFX.pn.value = make(nor, false); GFX.pbr.value = 1;
+}
+
 /** Gemeinsame Werte für alle Materialien. */
-export const GFX = { time: { value: 0 }, rimColor: { value: new THREE.Color(0x7a88ff) }, rim: { value: .2 }, skyC: { value: new THREE.Color(0x8fa4b8) }, gndC: { value: new THREE.Color(0x2a2822) }, snap: { value: 0 }, lay: { value: makeLayers() } };
+export const GFX = { time: { value: 0 }, rimColor: { value: new THREE.Color(0x7a88ff) }, rim: { value: .2 }, skyC: { value: new THREE.Color(0x8fa4b8) }, gndC: { value: new THREE.Color(0x2a2822) }, snap: { value: 0 }, lay: { value: makeLayers() }, pbr: { value: 0 }, pc: { value: emptyArray() }, pn: { value: emptyArray() }, pm: { value: PBR_NAMES.map(() => new THREE.Vector3(1, 1, 1)) } };
 
 export function psx(m, { glow = true, terrain = false } = {}) {
   m.onBeforeCompile = s => {
-    Object.assign(s.uniforms, { uTime: GFX.time, uRimC: GFX.rimColor, uRim: GFX.rim, uSkyC: GFX.skyC, uGndC: GFX.gndC, uSnap: GFX.snap, uLay: GFX.lay });
-    let vs = 'uniform float uTime, uSnap;\n', fs = 'precision highp sampler2DArray;\nuniform sampler2DArray uLay; uniform vec3 uRimC, uSkyC, uGndC; uniform float uRim; vec2 gLay = vec2(.625, .5);\n';
+    Object.assign(s.uniforms, { uTime: GFX.time, uRimC: GFX.rimColor, uRim: GFX.rim, uSkyC: GFX.skyC, uGndC: GFX.gndC, uSnap: GFX.snap, uLay: GFX.lay, uPC: GFX.pc, uPN: GFX.pn, uPBR: GFX.pbr, uPM: GFX.pm });
+    let vs = 'uniform float uTime, uSnap;\n', fs = 'precision highp sampler2DArray;\nuniform sampler2DArray uLay; uniform vec3 uRimC, uSkyC, uGndC; uniform float uRim; vec2 gLay = vec2(.625, .5);\n' + "const int PMAP[16] = int[16](-1, 0, 1, 2, 3, 4, 5, 6, -1, -1, -1, 9, 10, 11, -1, -1);\nconst float PUV[14] = float[14](1., .9, .9, 1.2, 1.6, .8, 2.6, 1.2, 1.8, .6, 1., 1., 1., 1.);\nuniform sampler2DArray uPC, uPN; uniform float uPBR; uniform vec3 uPM[14];\nvec4 gPN = vec4(.5, .5, .8, 1.); float gReal = 0.;\n";
     let vBody = '#include <begin_vertex>\n';
     if (glow) {
       vs += 'attribute float aGlow; attribute float aMat; varying float vGlow; varying float vMat; varying vec2 vLUv;\n';
@@ -165,40 +202,26 @@ export function psx(m, { glow = true, terrain = false } = {}) {
         #endif\n`;
     }
     if (terrain) {
-      vs += 'attribute float aRough; varying float vRough; varying vec3 vWP; varying vec3 vWN;\n';
-      fs += 'varying float vRough; varying vec3 vWP; varying vec3 vWN;\n';
-      vBody += 'vRough = aRough; vWP = (modelMatrix * vec4(transformed, 1.)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);\n';
+      vs += 'attribute float aRough; attribute vec2 aBio; varying float vRough; varying vec2 vBio; varying vec3 vWP; varying vec3 vWN;\n';
+      fs += 'varying float vRough; varying vec2 vBio; varying vec3 vWP; varying vec3 vWN;\n';
+      vBody += 'vRough = aRough; vBio = aBio; vWP = (modelMatrix * vec4(transformed, 1.)).xyz; vWN = normalize(mat3(modelMatrix) * objectNormal);\n';
     }
+    if (!terrain) fs += 'const vec3 vWN = vec3(0., 1., 0.);' + String.fromCharCode(10);
     s.vertexShader = vs + s.vertexShader.replace('#include <begin_vertex>', vBody).replace('#include <project_vertex>', `#include <project_vertex>
       if (uSnap > .5 && gl_Position.w > 0.) { vec2 sg = vec2(520., 292.); vec2 sq = gl_Position.xy / gl_Position.w; sq = floor(sq * sg + .5) / sg; gl_Position.xy = sq * gl_Position.w; }`);
     let f = fs + s.fragmentShader;
     if (terrain) {
-      f = f.replace('#include <map_fragment>', `
-        vec2 uvW = vWP.xz * .2; float sl = 1. - clamp(vWN.y, 0., 1.);
-        vec2 tG = texture(uLay, vec3(uvW, 12.)).rg, tD = texture(uLay, vec3(uvW * 1.37 + .31, 13.)).rg;
-        vec2 tR = texture(uLay, vec3(vec2(vWP.x + vWP.y * .55, vWP.z - vWP.y * .45) * .11, 11.)).rg;
-        float mA = texture(uLay, vec3(vWP.xz * .0123, 13.)).r * ${BOOST.toFixed(1)}, mB = texture(uLay, vec3(vWP.xz * .0037 + .5, 11.)).r * ${BOOST.toFixed(1)};
-        float pat = smoothstep(.62, 1.1, mA + (tG.g - .5) * .55);
-        vec2 gnd = mix(tD, mix(tG, tD, pat * .72), vRough);
-        gLay = mix(gnd, tR, smoothstep(.1, .3, sl));
-        diffuseColor.rgb *= gLay.r * ${BOOST.toFixed(1)} * (.9 + .3 * mB);`).replace('#include <color_fragment>', '#include <color_fragment>\n diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.3, .55, .15))), diffuseColor.rgb, .8);');
+      f = f.replace('#include <map_fragment>', "\n        vec2 uvW = vWP.xz * .2; float sl = 1. - clamp(vWN.y, 0., 1.);\n        float mA = texture(uLay, vec3(vWP.xz * .0123, 13.)).r * 1.6, mB = texture(uLay, vec3(vWP.xz * .0037 + .5, 11.)).r * 1.6;\n        if (uPBR > .5) {\n          vec2 uG = vWP.xz * .17, uD = vWP.xz * .135 + vec2(.37, .11), uR = vec2(vWP.x + vWP.y * .55, vWP.z - vWP.y * .45) * .065;\n          vec4 cG = texture(uPC, vec3(uG, 10.)), nG = texture(uPN, vec3(uG, 10.)), cD = texture(uPC, vec3(uD, 11.)), nD = texture(uPN, vec3(uD, 11.));\n          float pat = smoothstep(.66, 1.12, mA + (nG.b - .5) * .4) * (.35 + vRough * .65);\n          vec3 alb = mix(cG.rgb / uPM[10], cD.rgb / uPM[11], pat); vec4 nn = mix(nG, nD, pat);\n          if (vBio.x > .01) { vec2 uS = vWP.xz * .11; vec3 cS = texture(uPC, vec3(uS, 12.)).rgb / uPM[12]; vec4 nS = texture(uPN, vec3(uS, 12.)); float k = smoothstep(.1, .7, vBio.x); alb = mix(alb, cS, k); nn = mix(nn, nS, k); }\n          if (vBio.y > .01) { vec2 uS = vWP.xz * .12; vec3 cS = texture(uPC, vec3(uS, 13.)).rgb / uPM[13]; vec4 nS = texture(uPN, vec3(uS, 13.)); float k = smoothstep(.1, .7, vBio.y + (mA - .8) * .25); alb = mix(alb, cS, k); nn = mix(nn, nS, k); }\n          float wR = smoothstep(.13, .32, sl + (mA - .8) * .05);\n          if (wR > .001) { vec3 cR = texture(uPC, vec3(uR, 9.)).rgb / uPM[9]; vec4 nR = texture(uPN, vec3(uR, 9.)); alb = mix(alb, cR, wR); nn = mix(nn, nR, wR); }\n          gPN = nn; gReal = 2.;\n          diffuseColor.rgb *= clamp(alb, 0., 2.3) * (.86 + .28 * mB);\n        } else {\n          vec2 tG = texture(uLay, vec3(uvW, 12.)).rg, tD = texture(uLay, vec3(uvW * 1.37 + .31, 13.)).rg;\n          vec2 tR = texture(uLay, vec3(vec2(vWP.x + vWP.y * .55, vWP.z - vWP.y * .45) * .11, 11.)).rg;\n          float pat = smoothstep(.62, 1.1, mA + (tG.g - .5) * .55);\n          vec2 gnd = mix(tD, mix(tG, tD, pat * .72), vRough);\n          gLay = mix(gnd, tR, smoothstep(.1, .3, sl));\n          diffuseColor.rgb *= gLay.r * 1.6 * (.9 + .3 * mB);\n        }").replace('#include <color_fragment>', '#include <color_fragment>' + String.fromCharCode(10) + ' diffuseColor.rgb = mix(vec3(dot(diffuseColor.rgb, vec3(.3, .55, .15))), diffuseColor.rgb, .86);');
     } else if (glow) {
-      f = f.replace('#include <map_fragment>', `
-        gLay = texture(uLay, vec3(vLUv, floor(vMat + .5))).rg;
-        diffuseColor.rgb *= mix(gLay.r * ${BOOST.toFixed(1)}, 1., clamp(vGlow * 1.6, 0., 1.));`);
-    } else f = f.replace('#include <map_fragment>', '#include <map_fragment>\n gLay = vec2(.625, dot(diffuseColor.rgb, vec3(.33)));');
-    f = f.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
-      { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
-        vec2 dH = vec2(dFdx(gLay.g), dFdy(gLay.g)) * ${terrain ? '.045' : '.045'};
-        vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1) * faceDirection;
-        vec3 grad = sign(det) * (dH.x * r1 + dH.y * r2);
-        normal = normalize(abs(det) * normal - grad); }`);
+      f = f.replace('#include <map_fragment>', "\n        gLay = texture(uLay, vec3(vLUv, floor(vMat + .5))).rg;\n        { int pI = PMAP[int(floor(vMat + .5))];\n          if (uPBR > .5 && pI >= 0 && vGlow < .5) {\n            vec3 pUv = vec3(vLUv * PUV[pI], float(pI));\n            vec4 pC = texture(uPC, pUv); gPN = texture(uPN, pUv); gReal = 1.;\n            diffuseColor.rgb *= clamp(pC.rgb / uPM[pI], 0., 2.4);\n          } else diffuseColor.rgb *= mix(gLay.r * 1.6, 1., clamp(vGlow * 1.6, 0., 1.)); }");
+    } else f = f.replace('#include <map_fragment>', '#include <map_fragment>' + String.fromCharCode(10) + ' gLay = vec2(.625, dot(diffuseColor.rgb, vec3(.33)));');
+    f = f.replace('#include <normal_fragment_maps>', "#include <normal_fragment_maps>\n      if (gReal > 1.5) {\n        vec2 tN = (gPN.rg * 2. - 1.) * .95;\n        normal = normalize(mat3(viewMatrix) * normalize(vec3(vWN.x + tN.x, vWN.y, vWN.z + tN.y)));\n      }\n      __SOLID__\n      else { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);\n        vec2 dH = vec2(dFdx(gLay.g), dFdy(gLay.g)) * .045;\n        vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1) * faceDirection;\n        vec3 grad = sign(det) * (dH.x * r1 + dH.y * r2);\n        normal = normalize(abs(det) * normal - grad); }".replace('__SOLID__', glow ? "else if (gReal > .5) {\n        vec3 tn = vec3((gPN.rg * 2. - 1.) * .9, 0.); tn.z = sqrt(max(1. - dot(tn.xy, tn.xy), .02));\n        vec3 q0 = dFdx(-vViewPosition), q1 = dFdy(-vViewPosition); vec2 s0 = dFdx(vLUv), s1 = dFdy(vLUv);\n        vec3 N = normal, qa = cross(q1, N), qb = cross(N, q0), T = qa * s0.x + qb * s1.x, B = qa * s0.y + qb * s1.y;\n        float dt = max(dot(T, T), dot(B, B)), sc = dt == 0. ? 0. : faceDirection / sqrt(dt);\n        normal = normalize(T * sc * tn.x + B * sc * tn.y + N * tn.z);\n      }" : ''));
     if (glow) f = f.replace('#include <opaque_fragment>', `
         vec3 litCap = diffuseColor.rgb * 1.3, litRoom = max(diffuseColor.rgb * .5, vec3(.001));
         outgoingLight = min(outgoingLight, litCap) + litRoom * (1. - exp(-max(outgoingLight - litCap, vec3(0.)) / litRoom));
         float mI = floor(vMat + .5), isM = mI == 9. ? 1. : 0.;
         float rgh = mI == 9. ? .36 : mI == 15. ? .48 : mI == 14. ? .54 : mI == 10. ? .6 : mI == 5. ? .52 : (mI == 11. || mI == 3.) ? .72 : .84;
-        rgh = clamp(rgh + (gLay.g - .5) * .2, .22, 1.);
+        rgh = gReal > .5 ? clamp(mix(rgh, gPN.b, .78), .2, 1.) : clamp(rgh + (gLay.g - .5) * .2, .22, 1.);
         vec3 Vd = normalize(vViewPosition);
         #if NUM_DIR_LIGHTS > 0
           vec3 hV = normalize(directionalLights[0].direction + Vd);
@@ -222,7 +245,7 @@ export function psx(m, { glow = true, terrain = false } = {}) {
         #include <opaque_fragment>`);
     s.fragmentShader = f;
   };
-  m.customProgramCacheKey = () => `ll3-${glow}-${terrain}`;
+  m.customProgramCacheKey = () => `ll4-${glow}-${terrain}`;
   return m;
 }
 

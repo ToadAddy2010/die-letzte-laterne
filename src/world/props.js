@@ -5,18 +5,21 @@ import { REGIONS, POIS } from '../data/world.js';
 import { heightAt, regionIdx, blockedAt, onRoad, colorAt, setTerrainAO, CHUNK, CHUNKS, HALF } from './terrain.js';
 import { inBuilt } from './collision.js';
 import { G } from '../game/state.js';
+import { SCANS, scanMat, cardMat } from './scans.js';
 
 const TAU = Math.PI * 2, HP = Math.PI / 2;
 const fine = (k, fn) => { k.noLo = true; fn(); k.noLo = false; };
 const crown = (k, x, y, z, R, c, c2, n = 42, o = {}) => {
   k.noLo = true;
-  k.blob(R * .74, x, y, z, c, { c2, mat: 'leaf', j: .12, uv: 1.15, d: 2, ...o });
+  const core = k.cards ? .66 : 1, dk = k.cards ? 0x2a4226 : c;
+  k.blob(R * .74 * core, x, y, z, dk, { c2: k.cards ? 0x46603a : c2, mat: 'leaf', j: .12, uv: 1.15, d: 2, ...o });
   const sy = o.sy || 1, m = R > 2.6 ? 6 : 4;
-  for (let i = 0; i < m; i++) { const v = (i + .5) / m * 2 - 1, a = i * 2.39996 + x, q = Math.sqrt(1 - v * v), r2 = R * (.42 + (i * 7 % 3) * .05); k.blob(r2, x + Math.cos(a) * q * R * .62, y + (v * .62 + .08) * R * sy, z + Math.sin(a) * q * R * .62, c, { c2, mat: 'leaf', j: .16, uv: 1.15, sy: .9, d: 2 }); }
+  for (let i = 0; i < m; i++) { const v = (i + .5) / m * 2 - 1, a = i * 2.39996 + x, q = Math.sqrt(1 - v * v), r2 = R * (.42 + (i * 7 % 3) * .05); k.blob(r2 * core, x + Math.cos(a) * q * R * .62 * core, y + (v * .62 + .08) * R * sy * core, z + Math.sin(a) * q * R * .62 * core, dk, { c2: k.cards ? 0x46603a : c2, mat: 'leaf', j: .16, uv: 1.15, sy: .9, d: 2 }); }
   k.noLo = false; k.onlyLo = true;
   k.blob(R * .98, x, y, z, c, { c2, mat: 'leaf', j: .12, uv: 1.15, ...o });
   k.onlyLo = false;
-  k.leaves(x, y, z, R, n * 3, c, c2, { size: Math.min(.46, R * .12), sx: o.sx, sy: o.sy, sz: o.sz });
+  if (k.cards) k.cards.push({ x, y, z, R, sy: o.sy || 1 });
+  else k.leaves(x, y, z, R, n * 3, c, c2, { size: Math.min(.46, R * .12), sx: o.sx, sy: o.sy, sz: o.sz });
 };
 const roots = (k, r, c, n = 5) => fine(k, () => { for (let i = 0; i < n; i++) { const a = i / n * TAU + .4, ca = Math.cos(a), sa = Math.sin(a), L = r * (1.9 + (i % 2) * .6); k.tube([[ca * r * .5, .85, sa * r * .5], [ca * r * 1.15, .25, sa * r * 1.15], [ca * L, -.2, sa * L]], [r * .36, r * .24, .03], c, { mat: 'bark', seg: 5, sub: 2 }); } });
 const trunk = (k, h, r, c, c2, bend = .35) => { k.tube([[0, -.35, 0], [bend * .25, h * .32, -bend * .1], [-bend * .3, h * .66, bend * .22], [bend * .2, h, 0]], [r * 1.22, r * .9, r * .7, r * .5], c, { mat: 'bark', seg: 10, sub: 3, c2, uv: .55 }); roots(k, r, c); };
@@ -31,8 +34,9 @@ const capShroom = (k, y, R, c, c2, o = {}) => {
 const pineTiers = (k, c, c2, tiers, snow) => {
   const top = tiers[tiers.length - 1], H0 = tiers[0][0], Hmax = top[0] + top[2], R0 = tiers[0][1];
   k.noLo = true;
-  k.loft([[H0, R0 * .4], [H0 + (Hmax - H0) * .4, R0 * .3], [H0 + (Hmax - H0) * .78, R0 * .14], [Hmax, .02]], 0, 0, 0, 0x14251c, { mat: 'leaf', seg: 9, sub: 1 });
-  tiers.forEach(([y, R], i) => {
+  k.loft([[H0, R0 * (k.cards ? .15 : .4)], [H0 + (Hmax - H0) * .4, R0 * (k.cards ? .11 : .3)], [H0 + (Hmax - H0) * .78, R0 * (k.cards ? .06 : .1)], [Hmax, .02]], 0, 0, 0, k.cards ? 0x2c241e : 0x101d15, { mat: 'leaf', seg: 9, sub: 1 });
+  if (k.cards) tiers.forEach(([y, R], i) => k.cards.push({ pine: 1, y, R, i, snow }));
+  else tiers.forEach(([y, R], i) => {
     const n = Math.max(8, Math.round(7 + R * 2.4)), tip = snow ? 0xeef3f8 : c2;
     for (let f = 0; f < n; f++) {
       const a = f / n * Math.PI * 2 + i * 1.27, ca = Math.cos(a), sa = Math.sin(a), L = R * (1.02 + Math.sin(f * 3.7 + i) * .14);
@@ -70,7 +74,7 @@ const DEF = {
   } },
   shroomSmall: { s: [.55, 1.5], make: k => {
     k.loft([[-.05, .3], [.16, .25], [.65, .17], [1.05, .19]], 0, 0, 0, 0xddd3f2, { mat: 'plaster', seg: 9 });
-    capShroom(k, .98, .88, 0xb82f4d, 0xff6a7d, { h: .68, seg: 14, under: 0xf6e4d4 });
+    capShroom(k, .98, .88, 0x7e3a2e, 0xb4684c, { h: .68, seg: 14, under: 0xf6e4d4 });
     fine(k, () => { for (const [x, y, z, r] of [[.36, 1.46, .25, .13], [-.33, 1.42, -.26, .11], [.05, 1.62, -.1, .09], [-.15, 1.4, .46, .08]]) k.ball(r, x, y, z, 0xfff1d6, { glow: .85, sy: .6 }); });
   } },
   glowcap: { s: [.6, 1.7], make: k => {
@@ -96,15 +100,19 @@ const DEF = {
     k.tube([[.1, 4.5, 0], [1, 5.5, .2], [2.1, 6.4, .3], [3, 7.4, .2]], [.3, .22, .14, .03], c, { mat: 'bark', seg: 6, sub: 3 }); k.tube([[-.1, 4.1, 0], [-1, 4.9, -.2], [-1.9, 5.3, -.3], [-2.8, 6.2, -.1]], [.26, .18, .12, .03], c, { mat: 'bark', seg: 6, sub: 3 });
     k.tube([[.1, 6, .05], [.3, 7.3, .5], [-.1, 8.4, .9]], [.17, .1, .025], c, { mat: 'bark', seg: 5 }); limb(k, [2, 6.3, .3], [2.1, 7.9, 1.1], .08, .015, c, 4); limb(k, [-1.8, 5.3, -.3], [-1.9, 6.6, -1.1], .07, .015, c, 4); limb(k, [1, 5.5, .2], [.9, 6.7, -.9], .08, .015, c, 4);
   } },
-  stump: { r: .9, s: [.8, 1.4], make: k => {
+  stump: { r: .9, scan: 'tree_stump_01', s: [.8, 1.4], make: k => {
     k.loft([[-.2, 1.42], [.15, 1.15], [.6, .96], [1.1, .9], [1.14, .86]], 0, 0, 0, 0x4b3448, { mat: 'bark', seg: 14, fold: .06, foldN: 7 }); roots(k, .75, 0x4b3448, 4);
     k.cyl(.84, .84, .04, 0, 1.13, 0, 0xc29a6d, { mat: 'wood', seg: 12 });
     fine(k, () => { for (const r of [.24, .45, .66]) k.torus(r, .012, 0, 1.155, 0, 0x7a5a3e, { rx: HP, mat: 'plain', seg: 18 }); });
   } },
-  rock: { r: 1.2, s: [.7, 2.2], make: k => { k.ico(1.55, 0, .68, 0, 0x565392, { sy: .75, j: .16, c2: 0x7a78ae }); k.ico(.8, 1.25, .3, .4, 0x47457c, { j: .16, sy: .8 }); k.ico(.42, -1.2, .14, .7, 0x5a5894, { sy: .7 }); } },
-  rockRed: { r: 1.6, s: [.8, 3], make: k => { k.ico(1.75, 0, 1.1, 0, 0xa65536, { sy: 1.2, j: .2, c2: 0xdd8a4b }); k.ico(1, 1.45, .42, .4, 0x8a4630, { j: .18, sy: .85 }); k.ico(.5, -1.45, .2, -.6, 0xb4643e, { sy: .75 }); } },
-  rockIce: { r: 1.4, s: [.8, 2.4], make: k => { k.ico(1.65, 0, .8, 0, 0x5d78cc, { sy: .85, j: .18, c2: 0xc7dcff }); k.ico(.72, 1.3, .3, .5, 0x7a94dc, { c2: 0xd8e8ff }); } },
-  rockDark: { r: 1.5, s: [.8, 2.6], make: k => { k.ico(1.75, 0, .9, 0, 0x201a30, { j: .2, c2: 0x3a3048 }); k.ico(.8, 1.3, .32, -.5, 0x2a2238, { sy: .8 }); k.tube([[.1, .2, 1.48], [.42, .76, 1.45], [.2, 1.25, 1.3], [.5, 1.7, .92]], [.09, .065, .05, .012], 0xff5a24, { glow: 1, seg: 4 }); } },
+  fern: { grass: 1, scan: 'fern_02', s: [.8, 1.7], make: k => blades(k, 5, 1, 0x3c6a40, 0x7fae60, .3) },
+  nettle: { grass: 1, scan: 'nettle_plant', s: [.8, 1.5], make: k => blades(k, 5, .9, 0x3c6a40, 0x7fae60, .25) },
+  shrub: { grass: 1, scan: 'shrub_02', s: [.8, 1.7], make: k => blades(k, 6, 1.4, 0x3c5a38, 0x6f9050, .4) },
+  log: { grass: 1, scan: 'dead_tree_trunk', s: [.7, 1.2], make: k => k.tube([[-3, .3, 0], [0, .42, .1], [3, .3, 0]], [.32, .4, .28], 0x3a2f28, { mat: 'bark', seg: 7 }) },
+  rock: { r: 1.2, scan: 'boulder_01', s: [.7, 2.2], make: k => { k.ico(1.55, 0, .68, 0, 0x565392, { sy: .75, j: .16, c2: 0x7a78ae }); k.ico(.8, 1.25, .3, .4, 0x47457c, { j: .16, sy: .8 }); k.ico(.42, -1.2, .14, .7, 0x5a5894, { sy: .7 }); } },
+  rockRed: { r: 1.6, scan: 'namaqualand_boulder_04', tint: 0xe0a070, s: [.8, 3], make: k => { k.ico(1.75, 0, 1.1, 0, 0xa65536, { sy: 1.2, j: .2, c2: 0xdd8a4b }); k.ico(1, 1.45, .42, .4, 0x8a4630, { j: .18, sy: .85 }); k.ico(.5, -1.45, .2, -.6, 0xb4643e, { sy: .75 }); } },
+  rockIce: { r: 1.4, scan: 'rock_07', tint: 0xc4d4ea, s: [.8, 2.4], make: k => { k.ico(1.65, 0, .8, 0, 0x5d78cc, { sy: .85, j: .18, c2: 0xc7dcff }); k.ico(.72, 1.3, .3, .5, 0x7a94dc, { c2: 0xd8e8ff }); } },
+  rockDark: { r: 1.5, scan: 'boulder_01', tint: 0x55505a, s: [.8, 2.6], make: k => { k.ico(1.75, 0, .9, 0, 0x201a30, { j: .2, c2: 0x3a3048 }); k.ico(.8, 1.3, .32, -.5, 0x2a2238, { sy: .8 }); k.tube([[.1, .2, 1.48], [.42, .76, 1.45], [.2, 1.25, 1.3], [.5, 1.7, .92]], [.09, .065, .05, .012], 0xff5a24, { glow: 1, seg: 4 }); } },
   flowerBlue: { grass: 1, s: [.7, 1.5], make: k => { k.onlyLo = true; k.oct(.2, 0, .55, 0, 0x6f8fd8, { glow: .3, sy: .5 }); k.onlyLo = false; fine(k, () => { stem(k, 0, .54, 0x2f8a63); petals(k, .54, .25, 0x4f7bff, 0xa0c0ff, 6); k.ball(.06, 0, .6, 0, 0xfff1b0, { glow: 1 }); }); fine(k, () => k.sheet([[[.02, .18, 0], [.02, .2, .03]], [[.14, .3, .06], [.11, .31, .1]], [[.24, .33, .1], [.24, .33, .1]]], 0x2f8a63, { mat: 'leaf' })); } },
   flowerPink: { grass: 1, s: [.7, 1.5], make: k => { k.onlyLo = true; k.oct(.18, 0, .48, 0, 0xd88ab8, { glow: .3, sy: .5 }); k.onlyLo = false; fine(k, () => { stem(k, 0, .46, 0x2f8a63); petals(k, .46, .22, 0xff6fd0, 0xffc0ea, 5, .5); k.ball(.05, 0, .52, 0, 0xfff1b0, { glow: 1 }); }); } },
   grass: { grass: 1, s: [.7, 1.5], make: k => blades(k, 7, .98, 0xb4b4a4, 0xffffff) },
@@ -159,8 +167,42 @@ const DEF = {
   ember: { grass: 1, s: [.5, 1.3], make: k => { k.oct(.2, 0, .6, 0, 0xff7a28, { glow: 1 }); k.oct(.1, .3, 1, .2, 0xffc445, { glow: 1 }); k.oct(.08, -.25, 1.25, -.2, 0xffe08a, { glow: 1 }); } },
 };
 
+/** Baut die Zweigflächen eines Baumes: Kronen aus Blattbüscheln, Tannen aus hängenden Ästen. */
+function buildCards(list, seed) {
+  const r = RNG(seed), P = [], N = [], U = [], C = [], I = [];
+  const put = (p, n, u, c) => { P.push(...p); const l = Math.hypot(...n) || 1; N.push(n[0] / l, n[1] / l, n[2] / l); U.push(...u); C.push(...c); return P.length / 3 - 1; };
+  for (const q of list) {
+    if (q.pine) {
+      const n = Math.max(7, Math.round(6 + q.R * 2.2)), tint = q.snow ? [1, 1.04, 1.1] : [.92 + r() * .08, 1.04 + r() * .08, .78];
+      for (let f = 0; f < n; f++) {
+        const a = f / n * TAU + q.i * 1.27 + r() * .3, ca = Math.cos(a), sa = Math.sin(a), L = q.R * (1.04 + r() * .18), ph = r() * TAU, wedge = .62, base = P.length / 3;
+        const ts = [.03, .28, .54, .78, 1];
+        for (const t of ts) for (const u of [-1, 0, 1]) {
+          const w = L * .36 * Math.pow(Math.sin(Math.PI * Math.min(.97, t * .88 + .1)), .7), lift = L * (.08 * t - .46 * t * t), x = ca * L * t - sa * w * u, z = sa * L * t + ca * w * u, y = q.y + lift - Math.abs(u) * w * .3;
+          const k = .62 + t * .5;
+          put([x, y, z], [ca * .55 + (-sa * u) * .3, .85, sa * .55 + (ca * u) * .3], [.5 + .47 * t * Math.cos(ph + u * wedge * .5), .5 + .47 * t * Math.sin(ph + u * wedge * .5)], [tint[0] * k, tint[1] * k, tint[2] * k]);
+        }
+        for (let i = 0; i < ts.length - 1; i++) for (let j = 0; j < 2; j++) { const A = base + i * 3 + j, B = A + 1, D = A + 3, E = D + 1; I.push(A, D, B, B, D, E); }
+      }
+    } else {
+      const n = Math.round(Math.min(38, Math.max(12, q.R * q.R * 2.9))), tint = [.74 + r() * .1, .82 + r() * .1, .52 + r() * .06];
+      for (let f = 0; f < n; f++) {
+        const yy = r() * 1.7 - .72, an = r() * TAU, rr = Math.sqrt(Math.max(.02, 1 - yy * yy)), d = [Math.cos(an) * rr, yy, Math.sin(an) * rr], R2 = q.R * (.68 + r() * .34), p = [q.x + d[0] * R2, q.y + d[1] * R2 * q.sy, q.z + d[2] * R2], s = q.R * (.44 + r() * .2);
+        const tn = r() * TAU, h = [Math.cos(tn), .25 * (r() - .5), Math.sin(tn)], dd = h[0] * d[0] + h[1] * d[1] + h[2] * d[2]; let t = [h[0] - d[0] * dd, h[1] - d[1] * dd, h[2] - d[2] * dd]; const tl = Math.hypot(...t) || 1; t = t.map(v => v / tl);
+        const b = [d[1] * t[2] - d[2] * t[1], d[2] * t[0] - d[0] * t[2], d[0] * t[1] - d[1] * t[0]], u0 = r() * .5, v0 = r() * .5, sh = .62 + (yy + .72) * .3, base = P.length / 3;
+        for (const [e, g] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) put([p[0] + (t[0] * e + b[0] * g) * s, p[1] + (t[1] * e + b[1] * g) * s, p[2] + (t[2] * e + b[2] * g) * s], [d[0] + (t[0] * e + b[0] * g) * .45, d[1] + (t[1] * e + b[1] * g) * .45 + .15, d[2] + (t[2] * e + b[2] * g) * .45], [u0 + (e + 1) * .25, v0 + (g + 1) * .25], [tint[0] * sh, tint[1] * sh, tint[2] * sh]);
+        I.push(base, base + 1, base + 2, base, base + 2, base + 3);
+      }
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(P, 3)); g.setAttribute('normal', new THREE.Float32BufferAttribute(N, 3)); g.setAttribute('uv', new THREE.Float32BufferAttribute(U, 2)); g.setAttribute('color', new THREE.Float32BufferAttribute(C, 3)); g.setIndex(I);
+  return { g, pine: !!list[0].pine };
+}
+
 const NAMES = Object.keys(DEF);
 const typeIdx = Object.fromEntries(NAMES.map((n, i) => [n, i]));
+const EXTRA = { pilz: { fern: 12, shrub: 3, log: .5 }, forest: { fern: 26, nettle: 7, shrub: 6, log: 1 }, moor: { nettle: 5, log: .7 }, clock: { shrub: 1 } };
 const cache = new Map(), TOWNS = POIS.filter(p => p.type === 'town');
 /** Zwischen den Häusern wächst Gras, nur nicht auf Platz, Wegen und in Gebäuden. */
 const townLawn = (x, z) => { const t = TOWNS.find(p => Math.hypot(p.x - x, p.z - z) < p.r + 46); return !!t && Math.hypot(t.x - x, t.z - z) > 29.5 && !onRoad(x, z) && !inBuilt(x, z, .55); };
@@ -189,6 +231,16 @@ function chunkList(cx, cz) {
     }
   }
   const rg = RNG(Math.imul(cx + 11, 40503) ^ Math.imul(cz + 5, 65599));
+  if (SCANS.ready) for (const r of seen) for (const [name, density] of Object.entries(EXTRA[REGIONS[r].id] || {})) {
+    const def = DEF[name], n = density < 1 ? (rg() < density ? 1 : 0) : Math.round(density);
+    for (let i = 0; i < n; i++) {
+      const x = x0 + rg() * CHUNK, z = z0 + rg() * CHUNK, ry = rg() * 6.283, s = rg.range(def.s[0], def.s[1]);
+      if (regionIdx(x, z) !== r || blockedAt(x, z)) continue;
+      const y = heightAt(x, z);
+      if (y < .75 || Math.abs(heightAt(x + 2, z) - y) + Math.abs(heightAt(x, z + 2) - y) > 2.2) continue;
+      list.items.push({ t: typeIdx[name], x, y: y - .08, z, ry, s, grass: true, solid: false });
+    }
+  }
   for (const r of seen) for (const [name, density] of Object.entries(REGIONS[r].props)) {
     if (name !== 'grass' && name !== 'dryGrass') continue;
     const def = DEF[name], n = Math.round(density * 3.6);
@@ -204,7 +256,7 @@ function chunkList(cx, cz) {
   return list;
 }
 
-const NEAR_SOLID = 72, NEAR_SMALL = 52, LAWN_R = 34, LAWN_S = .92;
+const NEAR_SOLID = 62, NEAR_SMALL = 52, LAWN_R = 34, LAWN_S = .92;
 const LIN = Float32Array.from({ length: 256 }, (_, i) => Math.pow(i / 255, 2.2)), LAWN = REGIONS.map(r => Math.min(1, ((r.props.grass || 0) + (r.props.dryGrass || 0)) / 150));
 
 export class Props {
@@ -212,8 +264,8 @@ export class Props {
     this.group = new THREE.Group();
     parent.add(this.group);
     this.cx = -999; this.cz = -999; this.lx = 1e9; this.lz = 1e9;
-    const inst = (geo, cap, shadow, tint) => {
-      const m = new THREE.InstancedMesh(geo, MAT.solid, cap);
+    const inst = (geo, cap, shadow, tint, mat = MAT.solid) => {
+      const m = new THREE.InstancedMesh(geo, mat, cap);
       m.frustumCulled = false; m.count = 0; m.castShadow = shadow; m.receiveShadow = true;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
       if (tint) { m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage); }
@@ -222,14 +274,16 @@ export class Props {
     };
     this.near = []; this.far = [];
     NAMES.forEach((n, i) => {
-      const k = new Kit(1000 + i, { lod: true }); DEF[n].make(k);
-      const { hi, lo } = k.buildLOD(), small = !!DEF[n].grass;
+      const k = new Kit(1000 + i, { lod: true }); if (SCANS.ready && Kit.detail && !DEF[n].grass) k.cards = []; DEF[n].make(k);
+      let { hi, lo } = k.buildLOD(); const small = !!DEF[n].grass, sc = DEF[n].scan && SCANS[DEF[n].scan], mat = sc ? scanMat(DEF[n].scan, DEF[n].tint) : MAT.solid;
+      if (sc) { hi = sc.hi; lo = sc.lo; }
       const lawn = n === 'grass' || n === 'dryGrass';
-      const nm = inst(hi, lawn ? 5600 : small ? 2600 : 420, false, lawn);
+      const nm = inst(hi, lawn ? 5600 : small ? 2600 : 420, false, lawn, mat);
       this.near.push(nm);
+      if (k.cards?.length) { const c = buildCards(k.cards, 2000 + i), cm = new THREE.InstancedMesh(c.g, cardMat(c.pine ? 'pine' : 'leaf'), 420); cm.instanceMatrix = nm.instanceMatrix; cm.frustumCulled = false; cm.receiveShadow = true; cm.count = 0; cm.renderOrder = 1; this.group.add(cm); nm.userData.cards = cm; }
       // Schatten kommen aus der einfachen Form, das spart die Hälfte der Dreiecke.
       if (!small && DEF[n].r) { const sm = new THREE.InstancedMesh(lo, SHADOW_ONLY, 420); sm.instanceMatrix = nm.instanceMatrix; sm.frustumCulled = false; sm.castShadow = true; sm.count = 0; sm.position.y = .14; this.group.add(sm); nm.userData.sm = sm; }
-      this.far.push(inst(lo, lawn ? 4600 : small ? 4200 : 1400, false, lawn));
+      this.far.push(inst(lo, lawn ? 4600 : small ? 4200 : 1400, false, lawn, mat));
     });
     const lk = new Kit(1900); blades(lk, 4, .94, 0xb4b4a4, 0xffffff, .28);
     this.lawn = inst(lk.build(), 5200, false, true); this.lawnX = 1e9; this.lawnZ = 1e9;
@@ -311,6 +365,6 @@ export class Props {
         m.count++;
       }
     }
-    for (const m of [...this.near, ...this.far]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; if (m.userData.sm) m.userData.sm.count = m.count; }
+    for (const m of [...this.near, ...this.far]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; if (m.userData.sm) m.userData.sm.count = m.count; if (m.userData.cards) m.userData.cards.count = m.count; }
   }
 }

@@ -280,7 +280,7 @@ export class Player {
     if (!G.enemies.inCombat) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * .012 * dt);
     this.st = Math.max(0, this.st);
     const hsp = Math.hypot(this.vx, this.vz);
-    animate(this.model, { t: this.anim, speed: riding || this.atkT >= 0 ? 0 : hsp, attack: this.atkT, combo: this.combo, cast: this.cast, block: this.blocking, ride: riding, roll: this.rolling > 0 ? 1 - this.rolling / .46 : 0 });
+    animate(this.model, { t: this.anim, speed: riding || this.atkT >= 0 ? 0 : hsp, attack: this.atkT, combo: this.combo, cast: this.cast, block: this.blocking, ride: riding, air: !this.onGround && !riding, roll: this.rolling > 0 ? 1 - this.rolling / .46 : 0 });
     if (!riding && hsp > 5 && this.onGround && Math.random() < dt * 8 && !G.inDungeon) G.fx.burst(this.x, this.y + .1, this.z, wet ? 0x8fb8ff : 0xb0a8a0, 1, 1, .12, .3, 0);
     this.syncModel();
     if (riding) this.light.position.set(this.x - Math.sin(this.yaw) * 2.8, this.y + 8, this.z - Math.cos(this.yaw) * 2.8);

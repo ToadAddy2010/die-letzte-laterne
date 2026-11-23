@@ -1,6 +1,9 @@
 import * as THREE from '../../vendor/three.module.js';
 import { Kit, MAT } from '../core/gfx.js';
 import { G } from '../game/state.js';
+import { HUMAN, makeHuman, animateHuman } from './skinned.js';
+import { makeMonster } from './monsters.js';
+import { animateCreature } from './creatures.js';
 
 const cache = new Map(), HP = Math.PI / 2, NEAR = 46;
 const blobGeo = new THREE.CircleGeometry(1, 24); blobGeo.rotateX(-HP);
@@ -19,9 +22,9 @@ const GOLD = 0xd8a33c, DARK = 0x14101e, LEATHER = 0x4a2c20, WOOD = 0x5a3c2c;
 /** Nur in der Nahversion sichtbar: feine Teile wie Finger, Wimpern oder Zähne. */
 const fine = (k, fn) => { k.noLo = true; fn(); k.noLo = false; };
 
-function weapon(k, type, c = 0xc8cfe8, x = 0, y = -.1, z = .02) {
+export function weapon(k, type, c = 0xc8cfe8, x = 0, y = -.1, z = .02, neutral = false) {
   if (!type) return;
-  k.at(x, y, z, type === 'bow' ? 0 : .32, 1, type === 'staff' || type === 'spear' ? -.6 : type === 'bow' ? 0 : .62);
+  if (neutral) k.at(x, y, z, 0, 1, 0); else k.at(x, y, z, type === 'bow' ? 0 : .32, 1, type === 'staff' || type === 'spear' ? -.6 : type === 'bow' ? 0 : .62);
   if (type !== 'bow') k.at(0, 0, 0, 0, 1, HP);
   const blade = { mat: 'metal', seg: 4, flat: true, sub: 1, c2: 0xffffff }, met = { mat: 'metal', seg: 8 }, wood = { mat: 'wood', seg: 7 };
   const hilt = (g, p) => {
@@ -71,7 +74,7 @@ function weapon(k, type, c = 0xc8cfe8, x = 0, y = -.1, z = .02) {
   k.pop();
 }
 
-function hat(k, s, y) {
+export function hat(k, s, y) {
   const c = s.hatColor ?? 0x2743b8, c2 = s.hatColor2 ?? c, cloth = { mat: 'cloth', seg: 18 };
   switch (s.hat) {
     case 'wizard':
@@ -171,7 +174,7 @@ function humanFace(head, s, skin) {
   }
 }
 
-function skullHead(head, s) {
+export function skullHead(head, s) {
   const eye = s.eye ?? 0x7ff2c8, bone = 0xe8e2cc;
   head.loft([[-.09, .17, .21, 0, .05], [.0, .245, .27, 0, .015], [.13, .3, .325, 0, -.02], [.25, .28, .315, 0, -.03], [.34, .17, .2, 0, -.03], [.385, .01, .012, 0, -.03]], 0, 0, 0, bone, { mat: 'bone', seg: 18 });
   head.loft([[-.31, .09, .1, 0, .13], [-.27, .15, .18, 0, .09], [-.18, .185, .225, 0, .05], [-.1, .19, .225, 0, .035]], 0, 0, 0, 0xd8d2bc, { mat: 'bone', seg: 14 });
@@ -497,6 +500,8 @@ const piv = (parent, geo, x, y, z) => {
 };
 
 export function makeModel(spec) {
+  const monster = makeMonster(spec); if (monster) return monster;
+  if (HUMAN.ready && (spec.kind || 'human') === 'human' && !spec.skull && !spec.noFace) return makeHuman(spec);
   const root = new THREE.Group(), inner = new THREE.Group(), p = parts(spec), S = spec.scale ?? 1;
   root.add(inner); inner.scale.setScalar(S);
   const m = { root, inner, spec, kind: spec.kind || 'human', meshes: [], base: 0, height: 2.6 * S, flash: 0, near: true };
@@ -537,11 +542,13 @@ export function makeModel(spec) {
 export function setFlash(m, on) {
   if (m.flashing === on) return;
   m.flashing = on;
-  for (const o of m.meshes) o.material = on ? MAT.flash : MAT.solid;
+  if (on && m.skinned) m.hitT = .34;
+  for (const o of m.meshes) o.material = on ? MAT.flash : o.userData.base ?? MAT.solid;
 }
 
 /** Figuren in der Ferne nutzen eine einfachere Version. */
 export function updateDetail(m) {
+  if (m.skinned) return;
   const c = G.camera?.position; if (!c) return;
   const p = m.root.position, big = m.kind === 'dragon' ? 3 : 1, q = (p.x - c.x) ** 2 + (p.z - c.z) ** 2, lim = (NEAR * big * (m.near ? 1.12 : 1)) ** 2, near = q < lim && (!G.settings.low || q < 196);
   if (near === m.near) return;
@@ -551,6 +558,8 @@ export function updateDetail(m) {
 
 /** a: { t, speed, attack (0..1 oder -1), cast, block, dead (0..1), roll } */
 export function animate(m, a) {
+  if (m.creature) return animateCreature(m, a);
+  if (m.skinned) return animateHuman(m, a);
   updateDetail(m);
   const ph = a.t * Math.min(13, 4 + a.speed * 1.1), amp = Math.min(.95, a.speed * .14), sw = Math.sin(ph) * amp;
   const atk = a.attack >= 0 ? a.attack : -1;

@@ -87,7 +87,7 @@ export class NetUI {
   joinPane(code = this.invite(), error = '') {
     G.net.lastCode = code;
     let saved = '';
-    try { saved = localStorage.getItem('letzte-laterne-name') || ''; } catch { /* optional */ }
+    try { saved = localStorage.getItem('letzte-laterne-name') || (G.profiles?.cur?.guest ? '' : G.profiles?.cur?.name) || ''; } catch { /* optional */ }
     G.ui.titlePane(`<h2>Spiel beitreten</h2><p style="color:var(--dim)">Deine Figur wird beim Gastgeber gespeichert. Nimm beim nächsten Mal denselben Namen.</p>${error ? `<p class="neterr">${esc(error)}</p>` : ''}<label class="netlabel">Dein Name<input id="jName" class="netfield" maxlength="16" value="${esc(saved)}" autocomplete="off"></label><label class="netlabel">Raumcode<input id="jCode" class="netfield" maxlength="10" value="${esc(code)}" autocomplete="off"></label><div class="acts"><button id="jGo">Beitreten</button></div>`);
     const go = () => {
       const name = $('jName').value.trim(), c = $('jCode').value.trim().toUpperCase();

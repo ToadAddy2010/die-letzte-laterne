@@ -412,11 +412,13 @@ export class UI {
   pSys() {
     const slots = [1, 2, 3].map(i => { const m = G.game.slotInfo(i); return `<div class="stat" style="align-items:center"><span>Spielstand ${i}<br><small style="color:var(--dim)">${m ? esc(m) : 'leer'}</small></span><b><button data-s="${i}">Speichern</button> <button data-l="${i}" ${m ? '' : 'disabled'}>Laden</button></b></div>`; }).join('');
     const auto = G.game.slotInfo(0);
-    $('pbody').innerHTML = `<div class="col"><h3>Spielstände</h3><div class="stat" style="align-items:center"><span>Automatisch<br><small style="color:var(--dim)">${auto ? esc(auto) : 'leer'}</small></span><b><button data-l="0" ${auto ? '' : 'disabled'}>Laden</button></b></div>${slots}<h3 style="margin-top:12px">Einstellungen</h3>${this.settingsHtml()}<div class="acts"><button id="toMenu">Zum Hauptmenü</button></div></div><div class="col"><h3>Steuerung</h3>${this.keysHtml()}</div>`;
+    const who = G.profiles?.cur && !G.net?.isGuest ? `<div class="stat" style="align-items:center"><span>Angemeldet als <b>${esc(G.profiles.cur.name)}</b></span><b><button id="toProfile">Profil wechseln</button></b></div>` : '';
+    $('pbody').innerHTML = `<div class="col">${who}<h3>Spielstände</h3><div class="stat" style="align-items:center"><span>Automatisch<br><small style="color:var(--dim)">${auto ? esc(auto) : 'leer'}</small></span><b><button data-l="0" ${auto ? '' : 'disabled'}>Laden</button></b></div>${slots}<h3 style="margin-top:12px">Einstellungen</h3>${this.settingsHtml()}<div class="acts"><button id="toMenu">Zum Hauptmenü</button></div></div><div class="col"><h3>Steuerung</h3>${this.keysHtml()}</div>`;
     this.bindSettings();
     for (const b of $('pbody').querySelectorAll('[data-s]')) b.onclick = () => { G.game.save(+b.dataset.s); this.toast('Gespeichert', 'quest'); this.drawPanel(); };
     for (const b of $('pbody').querySelectorAll('[data-l]')) b.onclick = () => { this.closePanelSilent(); G.game.load(+b.dataset.l); };
     $('toMenu').onclick = () => { G.game.autosave(); this.closePanelSilent(); G.game.toMenu(); };
+    if ($('toProfile')) $('toProfile').onclick = () => { G.game.autosave(); this.closePanelSilent(); G.game.toMenu(); G.profileUI.pick(); };
   }
   closePanelSilent() { $('panel').style.display = 'none'; this.shop = null; }
   pShop() {
@@ -450,9 +452,11 @@ export class UI {
     items.push(['Neues Spiel', () => this.titlePane('<h2>Neues Spiel</h2><p>Möchtest du am Anfang kurz die Steuerung lernen? Das dauert etwa zwei Minuten.</p><div class="acts"><button id="ngT">Mit Tutorial</button><button id="ngN">Ohne Tutorial</button></div>', () => { $('ngT').onclick = () => { $('titlePane').style.display = 'none'; G.game.newGame(true); }; $('ngN').onclick = () => { $('titlePane').style.display = 'none'; G.game.newGame(false); }; })]);
     if (G.net?.available) items.push(['Mit Freund spielen', () => { if (hasSave) G.game.load(0); else G.game.newGame(); G.net.host(); G.ui.toast(Input.touch ? 'Raum wird geöffnet. Den Link findest du im Menü.' : 'Raum wird geöffnet. Drück P für den Link.', 'quest'); }]);
     if ([1, 2, 3].some(i => G.game.slotInfo(i))) items.push(['Spielstand laden', () => this.titleLoad()]);
-    items.push(['Einstellungen', () => this.titleSettings()], ['Steuerung', () => this.titlePane(`<h2>Steuerung</h2>${this.keysHtml()}`)], ['Über das Spiel', () => this.titlePane(`<h2>Die Letzte Laterne</h2><p>Ein eigenes Dark-Fantasy-Open-World-RPG, inspiriert von der Stimmung früher 3D-Spiele. Alle Grafiken, Musik und Sounds werden live im Browser erzeugt.</p><p style="color:var(--dim)">Three.js (MIT), Schriften Pixelify Sans und VT323 (OFL).</p>`)]);
+    items.push(['Einstellungen', () => this.titleSettings()], ['Steuerung', () => this.titlePane(`<h2>Steuerung</h2>${this.keysHtml()}`)], ['Über das Spiel', () => this.titlePane(`<h2>Die Letzte Laterne</h2><p>Ein eigenes Dark-Fantasy-Open-World-RPG, inspiriert von der Stimmung früher 3D-Spiele. Musik und Sounds werden live im Browser erzeugt.</p><p style="color:var(--dim)">Three.js (MIT). Fotoscans von Poly Haven, Figuren und Animationen von Quaternius, alle CC0.</p><p style="color:var(--dim)">Profile und Spielstände bleiben in deinem Browser. Das Spiel schickt sie an keinen Server.</p>`)]);
     if (G.net?.isInvited) items.length = 0;
-    const box = $('menuBtns'); box.innerHTML = '';
+    else if (G.profiles?.cur) items.splice(items.findIndex(x => x[0] === 'Einstellungen'), 0, ['Profil wechseln', () => G.profileUI.pick()]);
+    const box = $('menuBtns'); box.innerHTML = ''; box.style.display = '';
+    if (G.profiles?.cur) { const u = document.createElement('div'); u.className = 'pfUser'; u.textContent = `Angemeldet als ${G.profiles.cur.name}`; box.appendChild(u); }
     for (const [t, fn] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { G.audio.init(); G.audio.tick(); fn(); }; box.appendChild(b); }
   }
   titlePane(html, bind) { const p = $('titlePane'); p.style.display = 'block'; p.innerHTML = `${html}<div class="acts"><button id="paneX">Zurück</button></div>`; $('paneX').onclick = () => { p.style.display = 'none'; }; bind?.(); }
