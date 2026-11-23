@@ -96,7 +96,7 @@ function makeLayers() {
   }
   put(LAY.grass, (x, y, a, o) => { o.l = .82 + blades[a] * .34 + (n3[a] - .5) * .34 + (n1[a] - .5) * .1; o.h = .45 + blades[a] * .5 + (fine[a] - .5) * .2; });
   const peb = worley(16, 61);
-  put(LAY.dirt, (x, y, a, o) => { const j = sstep(.16, .03, 1 - peb.E[a] * 3.5) * sstep(.62, .85, peb.T[a]); o.l = .78 + (n1[a] - .5) * .34 + (fine[a] - .5) * .12 + j * .14; o.h = n2[a] * .4 + j * .5 + fine[a] * .1; });
+  put(LAY.dirt, (x, y, a, o) => { o.l = .8 + (n1[a] - .5) * .28 + (n3[a] - .5) * .2 + (fine[a] - .5) * .12 + (peb.T[a] - .5) * .05; o.h = n2[a] * .45 + n3[a] * .4 + fine[a] * .15; });
   put(LAY.skin, (x, y, a, o) => { o.l = .98 + (n2[a] - .5) * .05 + (fine[a] - .5) * .015; o.h = n2[a] * .18; });
   const streak = tileFbm(10, 3, 91, .2);
   put(LAY.bone, (x, y, a, o) => { o.l = .9 + (streak[a] - .5) * .16 + (n3[a] - .5) * .08; o.h = streak[a] * .3; });
@@ -146,12 +146,12 @@ const waterTex = canvasTex(64, (g, S) => {
 }, 80, 80);
 
 /** Gemeinsame Werte für alle Materialien. */
-export const GFX = { time: { value: 0 }, rimColor: { value: new THREE.Color(0x7a88ff) }, rim: { value: .5 }, snap: { value: 0 }, lay: { value: makeLayers() } };
+export const GFX = { time: { value: 0 }, rimColor: { value: new THREE.Color(0x7a88ff) }, rim: { value: .2 }, skyC: { value: new THREE.Color(0x8fa4b8) }, gndC: { value: new THREE.Color(0x2a2822) }, snap: { value: 0 }, lay: { value: makeLayers() } };
 
 export function psx(m, { glow = true, terrain = false } = {}) {
   m.onBeforeCompile = s => {
-    Object.assign(s.uniforms, { uTime: GFX.time, uRimC: GFX.rimColor, uRim: GFX.rim, uSnap: GFX.snap, uLay: GFX.lay });
-    let vs = 'uniform float uTime, uSnap;\n', fs = 'precision highp sampler2DArray;\nuniform sampler2DArray uLay; uniform vec3 uRimC; uniform float uRim; vec2 gLay = vec2(.625, .5);\n';
+    Object.assign(s.uniforms, { uTime: GFX.time, uRimC: GFX.rimColor, uRim: GFX.rim, uSkyC: GFX.skyC, uGndC: GFX.gndC, uSnap: GFX.snap, uLay: GFX.lay });
+    let vs = 'uniform float uTime, uSnap;\n', fs = 'precision highp sampler2DArray;\nuniform sampler2DArray uLay; uniform vec3 uRimC, uSkyC, uGndC; uniform float uRim; vec2 gLay = vec2(.625, .5);\n';
     let vBody = '#include <begin_vertex>\n';
     if (glow) {
       vs += 'attribute float aGlow; attribute float aMat; varying float vGlow; varying float vMat; varying vec2 vLUv;\n';
@@ -189,21 +189,32 @@ export function psx(m, { glow = true, terrain = false } = {}) {
     } else f = f.replace('#include <map_fragment>', '#include <map_fragment>\n gLay = vec2(.625, dot(diffuseColor.rgb, vec3(.33)));');
     f = f.replace('#include <normal_fragment_maps>', `#include <normal_fragment_maps>
       { vec3 sx = dFdx(-vViewPosition), sy = dFdy(-vViewPosition);
-        vec2 dH = vec2(dFdx(gLay.g), dFdy(gLay.g)) * ${terrain ? '.11' : '.045'};
+        vec2 dH = vec2(dFdx(gLay.g), dFdy(gLay.g)) * ${terrain ? '.045' : '.045'};
         vec3 r1 = cross(sy, normal), r2 = cross(normal, sx); float det = dot(sx, r1) * faceDirection;
         vec3 grad = sign(det) * (dH.x * r1 + dH.y * r2);
         normal = normalize(abs(det) * normal - grad); }`);
     if (glow) f = f.replace('#include <opaque_fragment>', `
         vec3 litCap = diffuseColor.rgb * 1.3, litRoom = max(diffuseColor.rgb * .5, vec3(.001));
         outgoingLight = min(outgoingLight, litCap) + litRoom * (1. - exp(-max(outgoingLight - litCap, vec3(0.)) / litRoom));
-        float mI = floor(vMat + .5), spK = mI == 9. ? .62 : mI == 15. ? .24 : mI == 14. ? .17 : mI == 10. ? .13 : mI == 5. ? .14 : .05, spP = mI == 9. ? 42. : 16.;
+        float mI = floor(vMat + .5), isM = mI == 9. ? 1. : 0.;
+        float rgh = mI == 9. ? .36 : mI == 15. ? .48 : mI == 14. ? .54 : mI == 10. ? .6 : mI == 5. ? .52 : (mI == 11. || mI == 3.) ? .72 : .84;
+        rgh = clamp(rgh + (gLay.g - .5) * .2, .22, 1.);
+        vec3 Vd = normalize(vViewPosition);
         #if NUM_DIR_LIGHTS > 0
-          vec3 hV = normalize(directionalLights[0].direction + normalize(vViewPosition));
-          outgoingLight += reflectedLight.directDiffuse * pow(max(dot(normal, hV), 0.), spP) * spK * 3.2;
+          vec3 hV = normalize(directionalLights[0].direction + Vd);
+          float nh = max(dot(normal, hV), 0.), a2 = rgh * rgh * rgh * rgh, dn = nh * nh * (a2 - 1.) + 1., D = a2 / (3.1416 * dn * dn + 1e-4), F0 = mix(.04, 1., isM), Fr = F0 + (1. - F0) * pow(1. - max(dot(Vd, hV), 0.), 5.);
+          outgoingLight += reflectedLight.directDiffuse / max(diffuseColor.rgb, vec3(.03)) * mix(vec3(1.), diffuseColor.rgb * 1.8, isM) * min(D, 14.) * Fr * .55 * (1. - vGlow);
         #endif
-        float rimK = pow(1. - clamp(dot(normalize(vViewPosition), normal), 0., 1.), 3.4);
-        outgoingLight += (uRimC * diffuseColor.rgb * 1.3 + uRimC * .03) * rimK * uRim;
-        outgoingLight = mix(outgoingLight, diffuseColor.rgb * 1.7, vGlow);
+        #if NUM_DIR_LIGHTS > 0
+          if (mI == 10.) outgoingLight += diffuseColor.rgb * vec3(1.15, 1.25, .55) * directionalLights[0].color * pow(max(dot(-Vd, directionalLights[0].direction), 0.), 3.) * .55;
+        #endif
+        vec3 Rw = inverseTransformDirection(reflect(-Vd, normal), viewMatrix);
+        vec3 envC = mix(uGndC, uSkyC, smoothstep(-.25, .55, Rw.y));
+        float eF0 = mix(.04, .9, isM), fE = eF0 + (1. - eF0) * pow(1. - max(dot(normal, Vd), 0.), 5.);
+        outgoingLight = outgoingLight * (1. - isM * .62) + envC * mix(vec3(1.), diffuseColor.rgb * 1.7, isM) * fE * (1. - rgh * .82) * (.5 + isM * .7) * (1. - vGlow);
+        float rimK = pow(1. - clamp(dot(Vd, normal), 0., 1.), 4.);
+        outgoingLight += (uRimC * diffuseColor.rgb * .8) * rimK * uRim;
+        outgoingLight = mix(outgoingLight, diffuseColor.rgb * 1.45, vGlow);
         #include <opaque_fragment>`);
     if (terrain) f = f.replace('#include <opaque_fragment>', `
         vec3 tCap = diffuseColor.rgb * 1.02, tRoom = max(diffuseColor.rgb * .34, vec3(.001));
@@ -214,6 +225,9 @@ export function psx(m, { glow = true, terrain = false } = {}) {
   m.customProgramCacheKey = () => `ll3-${glow}-${terrain}`;
   return m;
 }
+
+/** Wirft nur Schatten und wird selbst nicht gezeichnet. */
+export const SHADOW_ONLY = new THREE.MeshBasicMaterial({ colorWrite: false, depthWrite: false });
 
 export const MAT = {
   solid: psx(new THREE.MeshLambertMaterial({ vertexColors: true })),
@@ -386,6 +400,26 @@ class Buf {
 const M0 = new THREE.Matrix4(), M1 = new THREE.Matrix4(), NM = new THREE.Matrix3(), Q = new THREE.Quaternion(), E = new THREE.Euler(),
   P = new THREE.Vector3(), S = new THREE.Vector3(), C = new THREE.Color(), C2 = new THREE.Color();
 
+/* Farbregie: Neon-Blau und Violett werden zu Schiefer, Pflaume und Moos. So bleibt die ganze Welt in einer Palette. */
+const NAT = new Map(), HSL = { h: 0, s: 0, l: 0 }, T0 = new THREE.Color();
+function natural(t, hex, o, world) {
+  const leaf = o.mat === 'leaf', glow = !!o.glow, key = hex * 8 + (leaf ? 1 : 0) + (world ? 2 : 0) + (glow ? 4 : 0);
+  let v = NAT.get(key);
+  if (!v) {
+    T0.set(hex).getHSL(HSL, THREE.SRGBColorSpace);
+    let { h, s, l } = HSL; const deg = h * 360, k = world ? 1 : .62;
+    if (glow) s *= .8;
+    else if (deg > 190 && deg < 345) {
+      if (leaf) { h = (92 + (deg - 230) * .2) / 360; s = Math.min(s, .6) * .56; l *= .7; }
+      else { const to = deg < 255 ? 212 : 342; h = (deg + (to - deg) * .72 * k) / 360; s *= 1 - .64 * k; }
+    } else if (deg >= 70) { h = (deg + (92 - deg) * .34 * k) / 360; s *= 1 - .3 * k; if (leaf) l *= .84; }
+    else s *= 1 - .17 * k;
+    T0.setHSL(h, s, l, THREE.SRGBColorSpace);
+    v = [T0.r, T0.g, T0.b]; NAT.set(key, v);
+  }
+  t.setRGB(v[0], v[1], v[2]);
+}
+
 /**
  * Baukasten für alle Modelle. Mit { lod: true } entsteht zusätzlich eine einfache Version für die Ferne.
  * Kit.detail = 0 baut überall die einfache Form, für schwache Geräte.
@@ -401,7 +435,7 @@ export class Kit {
   }
   pop() { this.base.copy(this.stack.pop()); return this; }
   _mtx(x, y, z, sx, sy, sz, o) { E.set(o.rx || 0, o.ry || 0, o.rz || 0); Q.setFromEuler(E); M0.compose(P.set(x, y, z), Q, S.set(sx, sy, sz)).premultiply(this.base); NM.getNormalMatrix(M0); }
-  _tint(col, o) { C.set(col); this.hasC2 = o.c2 !== undefined; if (this.hasC2) C2.set(o.c2); this.f = 1 + (this.r() - .5) * (o.j ?? .05) * 1.1; this.gv = o.glow || 0; }
+  _tint(col, o) { natural(C, col, o, this.auto); this.hasC2 = o.c2 !== undefined; if (this.hasC2) natural(C2, o.c2, o, this.auto); this.f = 1 + (this.r() - .5) * (o.j ?? .05) * 1.1; this.gv = o.glow || 0; }
   _mat(o, col) { if (o.mat !== undefined) return LAY[o.mat] ?? 0; if (o.glow) return 0; return this.auto ? guessMat(col) : 0; }
   _put(b, lx, ly, lz, nx, ny, nz, t, u, v, m) {
     const e = M0.elements, q = NM.elements, i = b.nv++;
@@ -426,7 +460,7 @@ export class Kit {
   _both(hi, lo, x, y, z, sx, sy, sz, col, o, us, vs) {
     this._mtx(x, y, z, sx, sy, sz, o); this._tint(col, o);
     const m = this._mat(o, col), uo = this.r() * 4, vo = this.r() * 4;
-    this._tpl(this.h, Kit.detail ? hi : lo, m, us, vs, uo, vo);
+    if (!this.onlyLo) this._tpl(this.h, Kit.detail ? hi : lo, m, us, vs, uo, vo);
     if (this.l && !this.noLo) this._tpl(this.l, lo, m, us, vs, uo, vo);
     return this;
   }
@@ -478,7 +512,7 @@ export class Kit {
   }
   /** Weiche, knubbelige Form für Blattwerk und organische Massen. */
   blob(r, x, y, z, c, o = {}) {
-    const v = this.r() * 3 | 0, big = r > 4, hi = tpl(`blob${v}_${big}`, () => lumpy(big ? 5 : 3, .5, 1.9, v * 11 + 3)), lo = tpl(`blobL${v}`, () => lumpy(1, .4, 1.9, v * 11 + 3));
+    const v = this.r() * 3 | 0, det = o.d ?? (r > 4 ? 5 : 3), hi = tpl(`blob${v}_${det}`, () => lumpy(det, .5, 1.9, v * 11 + 3)), lo = tpl(`blobL${v}`, () => lumpy(1, .4, 1.9, v * 11 + 3));
     return this._both(hi, lo, x, y, z, r * (o.sx || 1), r * (o.sy || 1), r * (o.sz || 1), c, o, r * (o.uv ?? .4), r * (o.uv ?? .4));
   }
   torus(R, t, x, y, z, c, o = {}) {
@@ -496,7 +530,7 @@ export class Kit {
         const A = PRISM_V[PRISM_F[f]], B = PRISM_V[PRISM_F[f + 1]], D = PRISM_V[PRISM_F[f + 2]], a = [A[0] * w, A[1] * h, A[2] * d], e = [B[0] * w, B[1] * h, B[2] * d], g = [D[0] * w, D[1] * h, D[2] * d];
         const ux = e[0] - a[0], uy = e[1] - a[1], uz = e[2] - a[2], vx = g[0] - a[0], vy = g[1] - a[1], vz = g[2] - a[2]; let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const l = Math.hypot(nx, ny, nz) || 1; nx /= l; ny /= l; nz /= l;
         const gable = Math.abs(nz) > .9, under = ny < -.9, mt = gable ? gableM : under ? LAY.wood : roofM;
-        if (gable && o.gc !== undefined) C.set(o.gc); else C.set(c);
+        natural(C, gable && o.gc !== undefined ? o.gc : c, gable ? {} : o, this.auto);
         for (const q of [a, e, g]) {
           const i = this._put(b, q[0], q[1], q[2], nx, ny, nz, q[1] / (h || 1), (gable || under ? q[0] : q[2]) * s + uo, (under ? q[2] : gable ? q[1] : q[1] / (h || 1) * slope) * s, mt);
           b.idx[b.ni++] = i;
@@ -621,17 +655,17 @@ export class Kit {
   /** Einzelne Blätter auf einer Krone. Ihre Normalen zeigen nach außen, dadurch wirkt die Krone voll. Nur in der Nahversion. */
   leaves(cx, cy, cz, R, n, c, c2, o = {}) {
     if (!Kit.detail) return this;
-    M0.copy(this.base); NM.getNormalMatrix(M0); this.f = 1; this.gv = 0; this.hasC2 = true; C.set(c); C2.set(c2);
-    const b = this.h, r = this.r, sx = o.sx || 1, sy = o.sy || 1, sz = o.sz || 1, size = o.size ?? R * .2, m = LAY.leaf;
+    M0.copy(this.base); NM.getNormalMatrix(M0); this.f = 1; this.gv = 0; this.hasC2 = true; natural(C, c, { mat: 'leaf' }, this.auto); natural(C2, c2, { mat: 'leaf' }, this.auto);
+    const b = this.h, r = this.r, sx = o.sx || 1, sy = o.sy || 1, sz = o.sz || 1, size = o.size ?? R * .2, m = LAY.leaf, wide = o.slim ? .2 : .55;
     b.room(n * 8, n * 12);
     for (let k = 0; k < n; k++) {
-      const yy = r() * 2 - 1, an = r() * TAU, rr = Math.sqrt(1 - yy * yy), dx = Math.cos(an) * rr, dz = Math.sin(an) * rr, q = R * (.84 + r() * .3), px = cx + dx * q * sx, py = cy + yy * q * sy, pz = cz + dz * q * sz;
+      const yy = r() * 2 - 1, an = r() * TAU, rr = Math.sqrt(1 - yy * yy), dx = Math.cos(an) * rr, dz = Math.sin(an) * rr, q = R * (.82 + r() * .2), px = cx + dx * q * sx, py = cy + yy * q * sy, pz = cz + dz * q * sz;
       const tn = r() * TAU, ax = Math.cos(tn), az = Math.sin(tn), ux = ay0(dx, yy, dz, ax, az, 0), uy = ay0(dx, yy, dz, ax, az, 1), uz = ay0(dx, yy, dz, ax, az, 2), vx = yy * uz - dz * uy, vy = dz * ux - dx * uz, vz = dx * uy - yy * ux;
       const s = size * (.7 + r() * .6), t = Math.min(1, Math.max(0, yy * .55 + .5 + (r() - .5) * .3)), uo = r() * 4, vo = r() * 4;
       for (const side of [0, 1]) {
         const base = b.nv, lean = .35;
         const put = (a, e, w) => this._put(b, px + ux * a * s + vx * e * s + dx * w * s, py + uy * a * s + vy * e * s + yy * w * s, pz + uz * a * s + vz * e * s + dz * w * s, dx + ux * a * .4, yy + uy * a * .4, dz + uz * a * .4, t, uo + a * .3, vo + e * .3, m);
-        put(-1, 0, -lean); put(0, -.55, 0); put(1, 0, lean); put(0, .55, 0);
+        put(-1, 0, -lean); put(0, -wide, 0); put(1, 0, lean); put(0, wide, 0);
         if (side) { b.idx[b.ni++] = base; b.idx[b.ni++] = base + 1; b.idx[b.ni++] = base + 2; b.idx[b.ni++] = base; b.idx[b.ni++] = base + 2; b.idx[b.ni++] = base + 3; }
         else { b.idx[b.ni++] = base; b.idx[b.ni++] = base + 2; b.idx[b.ni++] = base + 1; b.idx[b.ni++] = base; b.idx[b.ni++] = base + 3; b.idx[b.ni++] = base + 2; }
       }
@@ -663,8 +697,8 @@ void main(){
   vec3 c = texture2D(t, vUv).rgb * 4.;
   c += texture2D(t, vUv + px * vec2(-1., -1.)).rgb + texture2D(t, vUv + px * vec2(1., -1.)).rgb + texture2D(t, vUv + px * vec2(-1., 1.)).rgb + texture2D(t, vUv + px * vec2(1., 1.)).rgb;
   c /= 8.;
-  if (thr > 0.) { float l = max(c.r, max(c.g, c.b)); c *= smoothstep(thr, thr + .55, l); }
-  gl_FragColor = vec4(min(c, vec3(6.)), 1.);
+  if (thr > 0.) { float l = max(c.r, max(c.g, c.b)); c *= smoothstep(thr, thr + .7, l); }
+  gl_FragColor = vec4(min(c, vec3(5.)), 1.);
 }`;
 const upFrag = /* glsl */`precision highp float; varying vec2 vUv; uniform sampler2D t; uniform vec2 px;
 void main(){
@@ -672,14 +706,43 @@ void main(){
   c += (texture2D(t, vUv + px * vec2(-.5, -.5)).rgb + texture2D(t, vUv + px * vec2(.5, -.5)).rgb + texture2D(t, vUv + px * vec2(-.5, .5)).rgb + texture2D(t, vUv + px * vec2(.5, .5)).rgb) * 2.;
   gl_FragColor = vec4(c / 12. * .85, 1.);
 }`;
+/* Umgebungsschatten: dunkelt Ecken, Spalten und Kontaktstellen ab. */
+const aoFrag = /* glsl */`precision highp float; varying vec2 vUv; uniform sampler2D dT; uniform mat4 ip; uniform float pY, asp;
+vec3 vp(vec2 u){ float z = texture2D(dT, u).x; vec4 c = ip * vec4(u * 2. - 1., z * 2. - 1., 1.); return c.xyz / c.w; }
+float ign(vec2 p){ return fract(52.9829189 * fract(dot(p, vec2(.06711056, .00583715)))); }
+void main(){
+  float z0 = texture2D(dT, vUv).x;
+  if (z0 >= .99999) { gl_FragColor = vec4(1., 1., 0., 1.); return; }
+  vec3 P = vp(vUv), N = normalize(cross(dFdx(P), dFdy(P)));
+  float Rw = 1.75, rad = min(Rw * pY * .5 / max(-P.z, .6), .11), a0 = ign(gl_FragCoord.xy) * 6.2832, occ = 0.;
+  for (int i = 0; i < 6; i++) {
+    float t = (float(i) + .5) / 6., a = a0 + float(i) * 2.39996;
+    vec3 v = vp(vUv + vec2(cos(a) / asp, sin(a)) * sqrt(t) * rad) - P;
+    float l2 = dot(v, v), nv = dot(N, v) / sqrt(l2 + 1e-4);
+    occ += max(nv - .08, 0.) * (1. - smoothstep(.2, 1., l2 / (Rw * Rw)));
+  }
+  float fade = 1. - smoothstep(70., 150., -P.z);
+  gl_FragColor = vec4(1. - clamp(occ / 6. * 2.7, 0., .82) * fade, clamp(-P.z / 220., 0., 1.), 0., 1.);
+}`;
+const aoBlurFrag = /* glsl */`precision highp float; varying vec2 vUv; uniform sampler2D t; uniform vec2 px;
+void main(){
+  vec2 c = texture2D(t, vUv).rg; float s = c.r * 2., w = 2.;
+  for (int i = 0; i < 4; i++) {
+    vec2 o = i == 0 ? vec2(1.2, .5) : i == 1 ? vec2(-.5, 1.2) : i == 2 ? vec2(-1.2, -.5) : vec2(.5, -1.2);
+    vec2 q = texture2D(t, vUv + o * px).rg;
+    float k = exp(-abs(q.g - c.g) * 260.);
+    s += q.r * k; w += k;
+  }
+  gl_FragColor = vec4(s / w, c.g, 0., 1.);
+}`;
 const postFrag = /* glsl */`
 precision highp float;
 varying vec2 vUv;
-uniform sampler2D tex, bloom;
-uniform vec2 res;
-uniform float hurt, fade, flash, time, warm, levels, shaft, retro;
-uniform vec2 sunPos;
-uniform vec3 shaftC;
+uniform sampler2D tex, bloom, aoT, dT;
+uniform vec2 res, sunPos;
+uniform float hurt, fade, flash, time, warm, levels, shaft, retro, hazeK, useAO;
+uniform vec3 shaftC, hazeC, sunC, sunW, camW;
+uniform mat4 ipM, cwM;
 float bayer(vec2 p){
   ivec2 i = ivec2(mod(p, 4.));
   int m[16] = int[16](0,8,2,10,12,4,14,6,3,11,1,9,15,7,13,5);
@@ -692,27 +755,36 @@ void main(){
   vec3 c = texture2D(tex, vUv).rgb;
   vec3 n = texture2D(tex, vUv + vec2(px.x,0.)).rgb + texture2D(tex, vUv - vec2(px.x,0.)).rgb
          + texture2D(tex, vUv + vec2(0.,px.y)).rgb + texture2D(tex, vUv - vec2(0.,px.y)).rgb;
-  c = max(c + (c * 4. - n) * (retro > .5 ? .13 : .07), 0.);
-  c += texture2D(bloom, vUv).rgb * .42;
+  c = max(c + (c * 4. - n) * (retro > .5 ? .13 : .05), 0.);
+  if (useAO > .5) c *= texture2D(aoT, vUv).r;
+  float z = texture2D(dT, vUv).x;
+  if (hazeK > .00001 && z < .99999) {
+    vec4 vp = ipM * vec4(vUv * 2. - 1., z * 2. - 1., 1.); vp /= vp.w;
+    vec3 wp = (cwM * vec4(vp.xyz, 1.)).xyz, rd = wp - camW; float dist = length(rd); rd /= dist;
+    float hgt = max(min(wp.y, camW.y) - 4., 0.), f = (1. - exp(-dist * hazeK * exp(-hgt * .016))) * (1. - smoothstep(1180., 1340., dist));
+    float mu = max(dot(rd, sunW), 0.);
+    c = mix(c, hazeC + sunC * (pow(mu, 4.) * .34 + pow(mu, 28.) * .7), f);
+  }
+  c += texture2D(bloom, vUv).rgb * .27;
   if (shaft > .01) {
     vec2 st = (sunPos - vUv) / 14., u = vUv + st * ign(gl_FragCoord.xy);
     float dec = 1.; vec3 rays = vec3(0.);
     for (int i = 0; i < 14; i++) { u += st; rays += texture2D(bloom, u).rgb * dec; dec *= .9; }
-    c += shaftC * dot(rays, vec3(.33)) * shaft * .1;
+    c += shaftC * dot(rays, vec3(.33)) * shaft * .075;
   }
-  c = film(c * .74);
+  c = film(c * .92);
   c = pow(c, vec3(1. / 2.2));
   float l = dot(c, vec3(.299,.587,.114));
-  c = mix(vec3(l), c, 1.16);
-  c = clamp((c - .5) * 1.05 + .5, 0., 1.);
-  c += mix(vec3(-.01, -.003, .026), vec3(.024, .01, -.016), smoothstep(.12, .82, l));
-  c.r += warm * .022; c.b -= warm * .016;
+  c = mix(vec3(l), c, 1.04);
+  c = clamp(c + (c - .5) * (1. - abs(2. * c - 1.)) * .16, 0., 1.);
+  c += mix(vec3(-.012, -.002, .018), vec3(.018, .008, -.014), smoothstep(.1, .8, l));
+  c.r += warm * .012; c.b -= warm * .01;
   vec2 q = vUv - .5;
-  float v = smoothstep(.92, .34, length(q * vec2(1.05, 1.)));
-  c *= mix(.72, 1., v);
-  c = mix(c, vec3(.75,.04,.05), hurt * (1. - v) * .9);
+  float v = smoothstep(.98, .36, length(q * vec2(1.05, 1.)));
+  c *= mix(.8, 1., v);
+  c = mix(c, vec3(.62,.05,.05), hurt * (1. - v) * .9);
   if (retro > .5) c = floor(c * levels + bayer(gl_FragCoord.xy) + .5) / levels;
-  else c += (ign(gl_FragCoord.xy) - .5) / 200.;
+  else c += (ign(gl_FragCoord.xy + time) - .5) * .012;
   c = mix(c, vec3(1.,.95,.84), flash);
   c *= 1. - fade;
   gl_FragColor = vec4(c, 1.);
@@ -730,21 +802,27 @@ export class Retro {
     // Manche Handys können nicht in Half-Float-Texturen rendern.
     const hdr = this.r.extensions.has('EXT_color_buffer_float') || this.r.extensions.has('EXT_color_buffer_half_float');
     const type = hdr ? THREE.HalfFloatType : THREE.UnsignedByteType, low = { type, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter };
-    this.rt = new THREE.WebGLRenderTarget(4, 4, { type, depthBuffer: true, samples: 4, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
+    const depth = new THREE.DepthTexture(4, 4); depth.type = THREE.UnsignedIntType; depth.minFilter = depth.magFilter = THREE.NearestFilter;
+    this.rt = new THREE.WebGLRenderTarget(4, 4, { type, depthBuffer: true, depthTexture: depth, samples: 4, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter });
     this.bl = [new THREE.WebGLRenderTarget(4, 4, low), new THREE.WebGLRenderTarget(4, 4, low), new THREE.WebGLRenderTarget(4, 4, low)];
+    const aoOpt = { type: THREE.UnsignedByteType, depthBuffer: false, minFilter: THREE.LinearFilter, magFilter: THREE.LinearFilter };
+    this.aoA = new THREE.WebGLRenderTarget(4, 4, aoOpt); this.aoB = new THREE.WebGLRenderTarget(4, 4, aoOpt);
     this.u = {
-      tex: { value: this.rt.texture }, bloom: { value: this.bl[0].texture }, res: { value: new THREE.Vector2(4, 4) }, hurt: { value: 0 }, fade: { value: 0 },
-      flash: { value: 0 }, time: { value: 0 }, warm: { value: 0 }, levels: { value: 56 }, shaft: { value: 0 }, retro: { value: 0 }, sunPos: { value: new THREE.Vector2(.5, .8) }, shaftC: { value: new THREE.Color(0xffd8a0) },
+      tex: { value: this.rt.texture }, bloom: { value: this.bl[0].texture }, aoT: { value: this.aoB.texture }, dT: { value: depth }, res: { value: new THREE.Vector2(4, 4) }, hurt: { value: 0 }, fade: { value: 0 },
+      flash: { value: 0 }, time: { value: 0 }, warm: { value: 0 }, levels: { value: 56 }, shaft: { value: 0 }, retro: { value: 0 }, useAO: { value: 1 }, hazeK: { value: 0 }, sunPos: { value: new THREE.Vector2(.5, .8) }, shaftC: { value: new THREE.Color(0xffd8a0) },
+      hazeC: { value: new THREE.Color(0x8fa0a8) }, sunC: { value: new THREE.Color(0xffe0b8) }, sunW: { value: new THREE.Vector3(0, 1, 0) }, camW: { value: new THREE.Vector3() }, ipM: { value: new THREE.Matrix4() }, cwM: { value: new THREE.Matrix4() },
     };
     const pass = (fragmentShader, uniforms, extra = {}) => new THREE.ShaderMaterial({ uniforms, depthTest: false, depthWrite: false, fragmentShader, vertexShader: fsq, ...extra });
     this.mat = pass(postFrag, this.u);
     this.dn = pass(downFrag, { t: { value: null }, px: { value: new THREE.Vector2() }, thr: { value: 0 } });
     this.up = pass(upFrag, { t: { value: null }, px: { value: new THREE.Vector2() } }, { blending: THREE.AdditiveBlending, transparent: true });
+    this.aoM = pass(aoFrag, { dT: { value: depth }, ip: { value: new THREE.Matrix4() }, pY: { value: 1 }, asp: { value: 1 } });
+    this.aoBlur = pass(aoBlurFrag, { t: { value: this.aoA.texture }, px: { value: new THREE.Vector2() } });
     this.q = new THREE.Mesh(new THREE.PlaneGeometry(2, 2), this.mat);
     this.q.frustumCulled = false;
     this.ps = new THREE.Scene(); this.ps.add(this.q);
     this.pc = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
-    this.lines = 1080; this.dyn = 1; this.acc = 0; this.cnt = 0; this.hold = 0; this.isRetro = false;
+    this.lines = 1080; this.dyn = 1; this.acc = 0; this.cnt = 0; this.hold = 0; this.isRetro = false; this.ao = true;
   }
   /** Modern: glatt und scharf. Retro: Pixel, wackelnde Ecken und wenige Farben. */
   setStyle(retro) {
@@ -761,6 +839,7 @@ export class Retro {
     const rh = Math.max(180, Math.round(ih * this.dyn)), rw = Math.max(2, Math.round(rh * w / h));
     this.rt.setSize(rw, rh);
     this.bl.forEach((t, i) => t.setSize(Math.max(2, rw >> (2 + i)), Math.max(2, rh >> (2 + i))));
+    this.aoA.setSize(Math.max(2, rw >> 1), Math.max(2, rh >> 1)); this.aoB.setSize(Math.max(2, rw >> 1), Math.max(2, rh >> 1));
     this.u.res.value.set(rw, rh);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -780,13 +859,23 @@ export class Retro {
   }
   _pass(mat, target) { this.q.material = mat; this.r.setRenderTarget(target); this.r.render(this.ps, this.pc); }
   render(scene, camera) {
-    const r = this.r;
+    const r = this.r, u = this.u;
     r.autoClear = true;
+    // Schatten werden jedes zweite Bild erneuert, das spart spürbar Rechenzeit.
+    this.tick = (this.tick || 0) + 1; r.shadowMap.autoUpdate = false; r.shadowMap.needsUpdate = this.tick % 2 === 0 || this.tick < 4;
     r.setRenderTarget(this.rt);
     r.render(scene, camera);
     r.autoClear = false;
+    const useAO = this.ao && !this.isRetro;
+    u.useAO.value = useAO ? 1 : 0; u.ipM.value = camera.projectionMatrixInverse; u.cwM.value = camera.matrixWorld; camera.getWorldPosition(u.camW.value);
+    if (useAO) {
+      const A = this.aoM.uniforms; A.ip.value = camera.projectionMatrixInverse; A.pY.value = camera.projectionMatrix.elements[5]; A.asp.value = this.rt.width / this.rt.height;
+      this._pass(this.aoM, this.aoA);
+      this.aoBlur.uniforms.px.value.set(1 / this.aoA.width, 1 / this.aoA.height);
+      this._pass(this.aoBlur, this.aoB);
+    }
     const D = this.dn.uniforms, U = this.up.uniforms, B = this.bl;
-    D.t.value = this.rt.texture; D.thr.value = .95; D.px.value.set(2 / this.rt.width, 2 / this.rt.height); this._pass(this.dn, B[0]);
+    D.t.value = this.rt.texture; D.thr.value = 1.05; D.px.value.set(2 / this.rt.width, 2 / this.rt.height); this._pass(this.dn, B[0]);
     D.thr.value = 0;
     for (let i = 1; i < B.length; i++) { D.t.value = B[i - 1].texture; D.px.value.set(1 / B[i - 1].width, 1 / B[i - 1].height); this._pass(this.dn, B[i]); }
     for (let i = B.length - 1; i > 0; i--) { U.t.value = B[i].texture; U.px.value.set(1 / B[i].width, 1 / B[i].height); this._pass(this.up, B[i - 1]); }

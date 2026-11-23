@@ -14,12 +14,19 @@ export const groundY = (x, z) => (G.inDungeon ? 0 : Math.max(heightAt(x, z), -.4
 export class FX {
   constructor(scene) {
     this.scene = scene;
-    this.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.56, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), MAXP);
+    // Funken sind weiche, leuchtende Punkte statt fester Körper.
+    const g = new THREE.BufferGeometry();
+    this.aPos = new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.aCol = new THREE.BufferAttribute(new Float32Array(MAXP * 3), 3).setUsage(THREE.DynamicDrawUsage);
+    this.aSiz = new THREE.BufferAttribute(new Float32Array(MAXP), 1).setUsage(THREE.DynamicDrawUsage);
+    g.setAttribute('position', this.aPos); g.setAttribute('aColor', this.aCol); g.setAttribute('aSize', this.aSiz); g.setDrawRange(0, 0);
+    this.sparkU = { uH: { value: 600 } };
+    this.mesh = new THREE.Points(g, new THREE.ShaderMaterial({
+      transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, uniforms: this.sparkU,
+      vertexShader: 'attribute vec3 aColor; attribute float aSize; uniform float uH; varying vec3 vC; void main(){ vC = aColor; vec4 mv = modelViewMatrix * vec4(position, 1.); gl_Position = projectionMatrix * mv; gl_PointSize = clamp(aSize * uH * .5 * projectionMatrix[1][1] / max(-mv.z, .4), 1., 150.); }',
+      fragmentShader: 'varying vec3 vC; void main(){ vec2 p = gl_PointCoord * 2. - 1.; float r = dot(p, p); if (r > 1.) discard; float a = pow(1. - r, 2.4); gl_FragColor = vec4(vC * (a * .9 + pow(1. - r, 9.) * 1.5), a); }',
+    }));
     this.mesh.frustumCulled = false;
-    this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAXP * 3), 3);
-    this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
-    this.mesh.count = 0;
     scene.add(this.mesh);
     this.p = []; this.bolts = []; this.teles = []; this.temp = [];
   }
@@ -129,13 +136,11 @@ export class FX {
       if (q.l <= 0) { this.p[i] = this.p[this.p.length - 1]; this.p.pop(); continue; }
       q.vy -= q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt; q.z += q.vz * dt;
       const s = q.s * Math.min(1, q.l / q.L * 1.8);
-      _m.makeScale(s, s, s); _m.setPosition(q.x, q.y, q.z);
-      this.mesh.setMatrixAt(n, _m);
-      this.mesh.setColorAt(n, _c.set(q.c));
+      this.aPos.setXYZ(n, q.x, q.y, q.z); _c.set(q.c); this.aCol.setXYZ(n, _c.r, _c.g, _c.b); this.aSiz.setX(n, s * 2.4);
       n++;
     }
-    this.mesh.count = n;
-    this.mesh.instanceMatrix.needsUpdate = true;
-    this.mesh.instanceColor.needsUpdate = true;
+    this.mesh.geometry.setDrawRange(0, n);
+    this.aPos.needsUpdate = this.aCol.needsUpdate = this.aSiz.needsUpdate = true;
+    this.sparkU.uH.value = G.retro.rt.height;
   }
 }

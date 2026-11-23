@@ -28,7 +28,7 @@ import { QUESTS } from './data/quests.js';
 import { ITEMS } from './data/items.js';
 import { nextFrame } from './core/util.js';
 
-const outdoorFog = () => (G.settings.low ? .0062 : .0034);
+const outdoorFog = () => (G.settings.low ? .0056 : .0021);
 const SAVE = i => `letzte-laterne-save-${i}`;
 const SETTINGS = 'letzte-laterne-settings';
 const store = {
@@ -41,7 +41,7 @@ const game = G.game = {
   /** Sparmodus: weniger Pflanzen und kürzere Sichtweite für schwächere Geräte. */
   applyQuality() {
     const low = !!G.settings.low, f = G.focus || G.player || { x: 0, z: 180 }, T = G.terrain;
-    G.props.radius = low ? 2 : 3; G.props.grassRadius = low ? 1 : 2; G.props.thin = low; if (G.sky) G.sky.dir.castShadow = !low;
+    G.props.radius = low ? 2 : 3; G.props.grassRadius = low ? 1 : 2; G.props.thin = low; if (G.sky) G.sky.dir.castShadow = !low; G.retro.ao = !low;
     T.baseRadius ??= T.radius;
     T.radius = low ? Math.max(3, T.baseRadius - 2) : T.baseRadius;
     if (!G.inDungeon) { G.scene.fog.density = outdoorFog(); T.flush(f.x, f.z); G.props.update(f.x, f.z, true); G.structures?.update(f.x, f.z); }
@@ -244,7 +244,7 @@ async function boot() {
   G.ui = new UI();
   G.ui.loading(.02);
   await nextFrame();
-  G.retro = new Retro(document.getElementById('c')); G.retro.lines = G.settings.lines; G.retro.setStyle(G.settings.retro);
+  G.retro = new Retro(document.getElementById('c')); G.retro.lines = G.settings.lines; G.retro.setStyle(G.settings.retro); G.retro.ao = !G.settings.low;
   Kit.detail = G.settings.low || matchMedia('(pointer: coarse)').matches ? 0 : 1;
   G.retro.onSlow = () => { if (G.settings.low || G.mode !== 'play') return; G.settings.low = true; game.applyQuality(); game.saveSettings(); G.ui.toast('Sparmodus aktiviert, damit es flüssiger läuft', 'quest'); };
   G.scene = new THREE.Scene();

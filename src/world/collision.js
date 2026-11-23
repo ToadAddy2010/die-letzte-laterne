@@ -28,6 +28,17 @@ function pushBox(p, b, r) {
   if (m === l) p.x = b.x0 - r; else if (m === R) p.x = b.x1 + r; else if (m === u) p.z = b.z0 - r; else p.z = b.z1 + r;
 }
 
+/** Steht ein Punkt in einem Haus oder festen Bau? Bäume zählen hier nicht. */
+export function inBuilt(x, z, r = .4) {
+  const seen = grid.get(key(x, z));
+  if (!seen) return false;
+  for (const o of seen) {
+    if (o.b) { if (x > o.x0 - r && x < o.x1 + r && z > o.z0 - r && z < o.z1 + r) return true; }
+    else if (Math.hypot(x - o.x, z - o.z) < o.r + r) return true;
+  }
+  return false;
+}
+
 export function resolve(p, r) {
   if (G.inDungeon) return G.dungeon.collide(p, r);
   const seen = grid.get(key(p.x, p.z));

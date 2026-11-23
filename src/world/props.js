@@ -1,26 +1,49 @@
 import * as THREE from '../../vendor/three.module.js';
-import { Kit, MAT } from '../core/gfx.js';
-import { RNG, clamp } from '../core/util.js';
-import { REGIONS } from '../data/world.js';
-import { heightAt, regionIdx, blockedAt, setTerrainAO, CHUNK, CHUNKS, HALF } from './terrain.js';
+import { Kit, MAT, SHADOW_ONLY } from '../core/gfx.js';
+import { RNG, clamp, hash } from '../core/util.js';
+import { REGIONS, POIS } from '../data/world.js';
+import { heightAt, regionIdx, blockedAt, onRoad, colorAt, setTerrainAO, CHUNK, CHUNKS, HALF } from './terrain.js';
+import { inBuilt } from './collision.js';
+import { G } from '../game/state.js';
 
 const TAU = Math.PI * 2, HP = Math.PI / 2;
 const fine = (k, fn) => { k.noLo = true; fn(); k.noLo = false; };
-const crown = (k, x, y, z, R, c, c2, n = 42, o = {}) => { k.blob(R * .9, x, y, z, c, { c2, mat: 'leaf', j: .12, uv: 1.15, ...o }); k.leaves(x, y, z, R, n * 3, c, c2, { size: Math.min(.62, R * .15), sx: o.sx, sy: o.sy, sz: o.sz }); };
-const roots = (k, r, c, n = 5) => { for (let i = 0; i < n; i++) { const a = i / n * TAU + .4, ca = Math.cos(a), sa = Math.sin(a), L = r * (1.9 + (i % 2) * .6); k.tube([[ca * r * .5, .85, sa * r * .5], [ca * r * 1.15, .25, sa * r * 1.15], [ca * L, -.2, sa * L]], [r * .36, r * .24, .03], c, { mat: 'bark', seg: 5, sub: 2 }); } };
+const crown = (k, x, y, z, R, c, c2, n = 42, o = {}) => {
+  k.noLo = true;
+  k.blob(R * .74, x, y, z, c, { c2, mat: 'leaf', j: .12, uv: 1.15, d: 2, ...o });
+  const sy = o.sy || 1, m = R > 2.6 ? 6 : 4;
+  for (let i = 0; i < m; i++) { const v = (i + .5) / m * 2 - 1, a = i * 2.39996 + x, q = Math.sqrt(1 - v * v), r2 = R * (.42 + (i * 7 % 3) * .05); k.blob(r2, x + Math.cos(a) * q * R * .62, y + (v * .62 + .08) * R * sy, z + Math.sin(a) * q * R * .62, c, { c2, mat: 'leaf', j: .16, uv: 1.15, sy: .9, d: 2 }); }
+  k.noLo = false; k.onlyLo = true;
+  k.blob(R * .98, x, y, z, c, { c2, mat: 'leaf', j: .12, uv: 1.15, ...o });
+  k.onlyLo = false;
+  k.leaves(x, y, z, R, n * 3, c, c2, { size: Math.min(.46, R * .12), sx: o.sx, sy: o.sy, sz: o.sz });
+};
+const roots = (k, r, c, n = 5) => fine(k, () => { for (let i = 0; i < n; i++) { const a = i / n * TAU + .4, ca = Math.cos(a), sa = Math.sin(a), L = r * (1.9 + (i % 2) * .6); k.tube([[ca * r * .5, .85, sa * r * .5], [ca * r * 1.15, .25, sa * r * 1.15], [ca * L, -.2, sa * L]], [r * .36, r * .24, .03], c, { mat: 'bark', seg: 5, sub: 2 }); } });
 const trunk = (k, h, r, c, c2, bend = .35) => { k.tube([[0, -.35, 0], [bend * .25, h * .32, -bend * .1], [-bend * .3, h * .66, bend * .22], [bend * .2, h, 0]], [r * 1.22, r * .9, r * .7, r * .5], c, { mat: 'bark', seg: 10, sub: 3, c2, uv: .55 }); roots(k, r, c); };
-const limb = (k, a, b, r0, r1, c, seg = 6) => k.tube([a, [(a[0] + b[0]) / 2 + (b[2] - a[2]) * .12, (a[1] + b[1]) / 2 + .18, (a[2] + b[2]) / 2 - (b[0] - a[0]) * .12], b], [r0, (r0 + r1) / 2, r1], c, { mat: 'bark', seg, sub: 3 });
+const limb = (k, a, b, r0, r1, c, seg = 6) => fine(k, () => k.tube([a, [(a[0] + b[0]) / 2 + (b[2] - a[2]) * .12, (a[1] + b[1]) / 2 + .18, (a[2] + b[2]) / 2 - (b[0] - a[0]) * .12], b], [r0, (r0 + r1) / 2, r1], c, { mat: 'bark', seg, sub: 3 }));
 const capShroom = (k, y, R, c, c2, o = {}) => {
   const H = o.h ?? R * .68;
   k.loft([[y - .03, R * .18], [y + .05 * R, R * .95], [y + .12 * R, R * 1.02], [y + H * .46, R * .86], [y + H * .78, R * .52], [y + H * .96, R * .18], [y + H, .01]], 0, 0, 0, c, { mat: 'plaster', c2, seg: o.seg ?? 24, glow: o.glow, shape: a => 1 + Math.sin(a * 5 + .7) * .018 });
-  k.loft([[y - .04, R * .16], [y + .045 * R, R * .94]], 0, 0, 0, o.under ?? 0xf3d7ff, { mat: 'cloth', seg: o.seg ?? 24, sub: 1, glow: o.ug ?? .25 });
-  if (o.gills) fine(k, () => { for (let i = 0; i < o.gills; i++) { const a = i / o.gills * TAU; k.box(.035 * R, .022 * R, R * .72, Math.cos(a) * R * .56, y, Math.sin(a) * R * .56, 0xc8b0dc, { mat: 'plain', ry: -a + HP, sharp: true }); } });
+  k.loft([[y - .04 - R * .035, R * .16], [y + .012 * R, R * .955]], 0, 0, 0, o.under ?? 0xf3d7ff, { mat: 'cloth', seg: o.seg ?? 24, sub: 1, glow: o.ug ?? .25 });
+  if (o.gills) fine(k, () => { for (let i = 0; i < o.gills; i++) { const a = i / o.gills * TAU; k.box(.014 * R, .012 * R, R * .72, Math.cos(a) * R * .56, y - .026 * R, Math.sin(a) * R * .56, 0xcfc4b0, { mat: 'plain', ry: -a + HP, sharp: true }); } });
 };
+/** Nadelbaum aus einzelnen hängenden Zweigen. In der Ferne reichen drei Kegel. */
 const pineTiers = (k, c, c2, tiers, snow) => {
-  tiers.forEach(([y, R, H], i) => {
-    k.loft([[y, .04], [y + .08, R * .92], [y + .18, R], [y + H * .3, R * .66], [y + H * .62, R * .34], [y + H, .02]], 0, 0, 0, c, { mat: 'leaf', c2, seg: 20, uv: .55, j: .1, sub: 2, shape: (a, t) => 1 + Math.sin(a * 9 + i * 1.7) * .15 * (1 - t) + Math.sin(a * 17 + i) * .07 * (1 - t) });
-    if (snow) k.loft([[y + H * .22, R * .62], [y + H * .38, R * .54], [y + H * .68, R * .27], [y + H * 1.02, .02]], 0, .03, 0, 0xf2f6ff, { mat: 'plaster', seg: 18, sub: 2, shape: (a, t) => 1 + Math.sin(a * 9 + i * 1.7) * .11 * (1 - t) });
+  const top = tiers[tiers.length - 1], H0 = tiers[0][0], Hmax = top[0] + top[2], R0 = tiers[0][1];
+  k.noLo = true;
+  k.loft([[H0, R0 * .4], [H0 + (Hmax - H0) * .4, R0 * .3], [H0 + (Hmax - H0) * .78, R0 * .14], [Hmax, .02]], 0, 0, 0, 0x14251c, { mat: 'leaf', seg: 9, sub: 1 });
+  tiers.forEach(([y, R], i) => {
+    const n = Math.max(8, Math.round(7 + R * 2.4)), tip = snow ? 0xeef3f8 : c2;
+    for (let f = 0; f < n; f++) {
+      const a = f / n * Math.PI * 2 + i * 1.27, ca = Math.cos(a), sa = Math.sin(a), L = R * (1.02 + Math.sin(f * 3.7 + i) * .14);
+      const P = (t, u) => { const w = L * .15 * Math.pow(Math.sin(Math.PI * Math.min(.98, t * .9 + .08)), .7), lift = L * (.1 * t - .52 * t * t); return [ca * L * t - sa * w * u, y + lift - Math.abs(u) * w * .34, sa * L * t + ca * w * u]; };
+      k.sheet([.02, .27, .53, .78, 1].map(t => [P(t, -1), P(t, 0), P(t, 1)]), c, { mat: 'leaf', c2: tip, uv: .9 });
+    }
   });
+  k.noLo = false; k.onlyLo = true;
+  const span = Hmax - H0;
+  for (let i = 0; i < 3; i++) { const R = R0 * (1 - i * .3), h = span * .56, base = H0 - .3 + i * span * .24; k.cone(R, h, 0, base + h / 2, 0, c, { mat: 'leaf', c2: snow ? 0xdde6ee : c2, seg: 7 }); }
+  k.onlyLo = false;
 };
 const stem = (k, y0, y1, c, x = 0, z = 0, r = .035) => k.tube([[x, y0, z], [x + .03, (y0 + y1) / 2, z - .02], [x, y1, z]], [r * 1.2, r, r * .75], c, { mat: 'plain', seg: 4, sub: 2 });
 const petals = (k, y, R, c, c2, n = 6, cup = .28, x = 0, z = 0) => {
@@ -31,7 +54,7 @@ const petals = (k, y, R, c, c2, n = 6, cup = .28, x = 0, z = 0) => {
 };
 const blades = (k, n, H, c, c2, spread = .22) => {
   for (let i = 0; i < n; i++) {
-    const a = i / n * TAU + .3, ca = Math.cos(a), sa = Math.sin(a), h = H * (.72 + (i * 37 % 10) / 28), w = .055, lean = .22 + (i % 3) * .14, bx = ca * spread, bz = sa * spread, px = -sa * w, pz = ca * w;
+    const a = i / n * TAU + .3, ca = Math.cos(a), sa = Math.sin(a), h = H * (.72 + (i * 37 % 10) / 28), w = .048, lean = .22 + (i % 3) * .14, bx = ca * spread, bz = sa * spread, px = -sa * w, pz = ca * w;
     const row = (t, W) => { const dx = ca * lean * h * t * t, dz = sa * lean * h * t * t, y = h * t * (1 - t * t * .14); return [[bx + dx - px * W, y, bz + dz - pz * W], [bx + dx + px * W, y, bz + dz + pz * W]]; };
     const draw = () => k.sheet([row(0, 1), row(.45, .86), row(.8, .46), row(1, .03)], c, { mat: 'leaf', c2, uv: .9 });
     if (i < 2) draw(); else fine(k, draw);
@@ -41,9 +64,9 @@ const blades = (k, n, H, c, c2, spread = .22) => {
 const DEF = {
   shroomBig: { r: 1.5, s: [1.3, 2.9], make: k => {
     k.loft([[-.2, 1.75], [.3, 1.42], [1.4, 1.06], [3.6, .9], [5.6, .86], [6.8, 1.05]], 0, 0, 0, 0xddd3f2, { mat: 'plaster', c2: 0xb9aee2, seg: 16, fold: .05, foldN: 7 });
-    k.loft([[4.1, .95], [4.34, 1.6], [4.46, 1.82], [4.62, 1]], 0, 0, 0, 0xf0e4ff, { mat: 'cloth', seg: 18, fold: .1, foldN: 9, sub: 2 });
-    capShroom(k, 6.5, 4.7, 0x7a2fb5, 0xc24ad0, { h: 3.3, seg: 28, gills: 34 });
-    for (const [x, y, z, r] of [[2, 8.3, 1.5, .52], [-1.8, 8.55, 1.9, .5], [.4, 9.35, -1.4, .44], [-2.6, 7.8, -1.7, .55], [2.8, 7.7, -1.5, .52], [-.6, 9.65, .5, .36], [3.5, 7.1, .8, .34], [-3.6, 7.2, .7, .38]]) k.ball(r, x, y, z, 0xfff1d6, { glow: .72, sy: .62 });
+    fine(k, () => k.loft([[4.1, .95], [4.34, 1.6], [4.46, 1.82], [4.62, 1]], 0, 0, 0, 0xf0e4ff, { mat: 'cloth', seg: 18, fold: .1, foldN: 9, sub: 2 }));
+    capShroom(k, 6.5, 4.7, 0x7a2fb5, 0xc24ad0, { h: 3.3, seg: 28, gills: 64 });
+    for (const [x, y, z, r] of [[2, 8.3, 1.5, .52], [-1.8, 8.55, 1.9, .5], [.4, 9.35, -1.4, .44], [-2.6, 7.8, -1.7, .55], [2.8, 7.7, -1.5, .52], [-.6, 9.65, .5, .36], [3.5, 7.1, .8, .34], [-3.6, 7.2, .7, .38]]) fine(k, () => k.ball(r, x, y, z, 0xfff1d6, { glow: .55, sy: .62 }));
   } },
   shroomSmall: { s: [.55, 1.5], make: k => {
     k.loft([[-.05, .3], [.16, .25], [.65, .17], [1.05, .19]], 0, 0, 0, 0xddd3f2, { mat: 'plaster', seg: 9 });
@@ -53,15 +76,14 @@ const DEF = {
   glowcap: { s: [.6, 1.7], make: k => {
     k.loft([[-.05, .25], [.2, .18], [.8, .13], [1.2, .16]], 0, 0, 0, 0x9fe8ff, { glow: .5, seg: 9 });
     capShroom(k, 1.12, .68, 0x34d5ff, 0xa6f6ff, { h: .6, seg: 14, glow: .9, under: 0xd8fbff, ug: .9 });
-    k.loft([[-.05, .16], [.3, .11], [.7, .12]], .7, 0, .3, 0x9fe8ff, { glow: .5, seg: 7 });
-    capShroom(k, .64, .4, 0x34d5ff, 0xa6f6ff, { h: .36, seg: 10, glow: .9, under: 0xd8fbff, ug: .9 });
+    fine(k, () => { k.loft([[-.05, .16], [.3, .11], [.7, .12]], .7, 0, .3, 0x9fe8ff, { glow: .5, seg: 7 }); k.at(.7, 0, .3); capShroom(k, .64, .4, 0x34d5ff, 0xa6f6ff, { h: .36, seg: 10, glow: .9, under: 0xd8fbff, ug: .9 }); k.pop(); });
   } },
   treeBlue: { r: 1, s: [1.1, 2.3], make: k => {
     trunk(k, 8.2, 1, 0x4a3160, 0x2d2045); limb(k, [.2, 6, 0], [3, 8.4, .9], .42, .16, 0x4a3160); limb(k, [-.1, 6.3, .1], [-3, 8.8, -.7], .4, .15, 0x4a3160); limb(k, [0, 7.4, 0], [.5, 10, -1.6], .32, .12, 0x4a3160);
     crown(k, 0, 10.4, 0, 4.5, 0x2743b8, 0x5a7bff, 60, { sy: .84 }); crown(k, 3.1, 8.6, 1, 3, 0x20389e, 0x4a68e8, 34); crown(k, -3.2, 9, -.8, 2.9, 0x3a2fae, 0x7458f0, 34); crown(k, .8, 8.3, -2.8, 2.5, 0x2a3cb0, 0x5a6ff0, 26);
     fine(k, () => { for (let i = 0; i < 8; i++) { const a = i * 2.4; k.oct(.2, Math.cos(a) * 4, 8.2 + i * .52, Math.sin(a) * 4, 0xfff0b0, { glow: 1 }); } });
   } },
-  pine: { r: .8, s: [1, 2.2], make: k => { k.tube([[0, -.3, 0], [.05, 3, 0], [0, 9.5, 0]], [.72, .46, .08], 0x3a2a35, { mat: 'bark', seg: 8, sub: 2 }); roots(k, .55, 0x3a2a35, 4); pineTiers(k, 0x123f3f, 0x2a8a70, [[2.3, 3.9, 3.6], [4.3, 3.2, 3.4], [6.1, 2.5, 3], [7.8, 1.8, 2.6], [9.2, 1.05, 2.2]]); } },
+  pine: { r: .8, s: [1, 2.2], make: k => { k.tube([[0, -.3, 0], [.05, 3, 0], [0, 9.5, 0]], [.72, .46, .08], 0x3a2a35, { mat: 'bark', seg: 8, sub: 2 }); roots(k, .55, 0x3a2a35, 4); pineTiers(k, 0x15302a, 0x3f6242, [[2, 4.3, 1.2], [3, 3.95, 1.2], [4, 3.5, 1.2], [5, 3.05, 1.2], [6, 2.6, 1.2], [7, 2.1, 1.1], [7.9, 1.65, 1.1], [8.8, 1.15, 1], [9.6, .72, 1.2]]); } },
   treeTwist: { r: 1.2, s: [1.2, 2.2], make: k => {
     k.tube([[0, -.3, 0], [.5, 2.2, .1], [-.2, 4.4, .2], [1, 6, 0], [2.8, 7.8, .2]], [1.45, 1.05, .82, .58, .24], 0x2f2438, { mat: 'bark', seg: 11, sub: 3 }); roots(k, 1.15, 0x2f2438, 6);
     k.tube([[-.1, 4.2, .1], [-1.2, 5.3, .3], [-2.4, 6.5, .4], [-3.2, 7.1, .5]], [.5, .34, .22, .08], 0x2f2438, { mat: 'bark', seg: 7, sub: 3 }); limb(k, [1.1, 6, 0], [.6, 8.6, -1.4], .3, .08, 0x2f2438);
@@ -83,10 +105,10 @@ const DEF = {
   rockRed: { r: 1.6, s: [.8, 3], make: k => { k.ico(1.75, 0, 1.1, 0, 0xa65536, { sy: 1.2, j: .2, c2: 0xdd8a4b }); k.ico(1, 1.45, .42, .4, 0x8a4630, { j: .18, sy: .85 }); k.ico(.5, -1.45, .2, -.6, 0xb4643e, { sy: .75 }); } },
   rockIce: { r: 1.4, s: [.8, 2.4], make: k => { k.ico(1.65, 0, .8, 0, 0x5d78cc, { sy: .85, j: .18, c2: 0xc7dcff }); k.ico(.72, 1.3, .3, .5, 0x7a94dc, { c2: 0xd8e8ff }); } },
   rockDark: { r: 1.5, s: [.8, 2.6], make: k => { k.ico(1.75, 0, .9, 0, 0x201a30, { j: .2, c2: 0x3a3048 }); k.ico(.8, 1.3, .32, -.5, 0x2a2238, { sy: .8 }); k.tube([[.1, .2, 1.48], [.42, .76, 1.45], [.2, 1.25, 1.3], [.5, 1.7, .92]], [.09, .065, .05, .012], 0xff5a24, { glow: 1, seg: 4 }); } },
-  flowerBlue: { grass: 1, s: [.7, 1.5], make: k => { stem(k, 0, .54, 0x2f8a63); petals(k, .54, .25, 0x4f7bff, 0xa0c0ff, 6); k.ball(.06, 0, .6, 0, 0xfff1b0, { glow: 1 }); fine(k, () => k.sheet([[[.02, .18, 0], [.02, .2, .03]], [[.14, .3, .06], [.11, .31, .1]], [[.24, .33, .1], [.24, .33, .1]]], 0x2f8a63, { mat: 'leaf' })); } },
-  flowerPink: { grass: 1, s: [.7, 1.5], make: k => { stem(k, 0, .46, 0x2f8a63); petals(k, .46, .22, 0xff6fd0, 0xffc0ea, 5, .5); k.ball(.05, 0, .52, 0, 0xfff1b0, { glow: 1 }); } },
-  grass: { grass: 1, s: [.7, 1.5], make: k => blades(k, 6, .78, 0x2f9a6c, 0x9fe8a8) },
-  dryGrass: { grass: 1, s: [.7, 1.4], make: k => blades(k, 5, .86, 0x9a7134, 0xecc878, .18) },
+  flowerBlue: { grass: 1, s: [.7, 1.5], make: k => { k.onlyLo = true; k.oct(.2, 0, .55, 0, 0x6f8fd8, { glow: .3, sy: .5 }); k.onlyLo = false; fine(k, () => { stem(k, 0, .54, 0x2f8a63); petals(k, .54, .25, 0x4f7bff, 0xa0c0ff, 6); k.ball(.06, 0, .6, 0, 0xfff1b0, { glow: 1 }); }); fine(k, () => k.sheet([[[.02, .18, 0], [.02, .2, .03]], [[.14, .3, .06], [.11, .31, .1]], [[.24, .33, .1], [.24, .33, .1]]], 0x2f8a63, { mat: 'leaf' })); } },
+  flowerPink: { grass: 1, s: [.7, 1.5], make: k => { k.onlyLo = true; k.oct(.18, 0, .48, 0, 0xd88ab8, { glow: .3, sy: .5 }); k.onlyLo = false; fine(k, () => { stem(k, 0, .46, 0x2f8a63); petals(k, .46, .22, 0xff6fd0, 0xffc0ea, 5, .5); k.ball(.05, 0, .52, 0, 0xfff1b0, { glow: 1 }); }); } },
+  grass: { grass: 1, s: [.7, 1.5], make: k => blades(k, 7, .98, 0xb4b4a4, 0xffffff) },
+  dryGrass: { grass: 1, s: [.7, 1.4], make: k => blades(k, 6, .98, 0xc0b89c, 0xffffff, .2) },
   reed: { grass: 1, water: 1, s: [.8, 1.6], make: k => { for (let i = 0; i < 3; i++) { const x = (i - 1) * .24, z = i * .1, h = 1.7 + i * .12; k.tube([[x, 0, z], [x + .04, h * .55, z], [x + .12, h, z + .04]], [.042, .034, .02], 0x5b7a45, { mat: 'leaf', seg: 4, sub: 2 }); k.loft([[h - .05, .02], [h, .085], [h + .3, .092], [h + .42, .02]], x + .12, 0, z + .04, 0x5a3a24, { mat: 'fur', seg: 6, sub: 2 }); } blades(k, 3, 1.1, 0x4a6a3c, 0x8fb070, .12); } },
   grave: { r: .7, s: [.8, 1.3], make: k => {
     k.box(1.3, .16, .62, 0, .08, 0, 0x5a5878, { mat: 'stone' });
@@ -99,10 +121,10 @@ const DEF = {
     k.cone(.05, .1, 0, .26, .4, 0x14101e, { mat: 'plain', seg: 4, rx: .3 });
   } },
   cactus: { r: .7, s: [.9, 2], make: k => {
-    const ribs = { mat: 'leaf', c2: 0x4fae62, seg: 16, sub: 2, shape: a => 1 + Math.abs(Math.sin(a * 4)) * .1 - .05 }, c = 0x2f7a4d;
+    const ribs = { mat: 'leaf', c2: 0x6f8a5a, seg: 16, sub: 2, shape: a => 1 + Math.abs(Math.sin(a * 4)) * .1 - .05 }, c = 0x46624a;
     k.loft([[-.2, .6], [.6, .62], [3.6, .56], [4.9, .44], [5.3, .12]], 0, 0, 0, c, ribs);
-    k.tube([[.4, 2.3, 0], [1.05, 2.35, 0], [1.42, 2.8, 0], [1.42, 3.5, 0], [1.42, 3.95, 0]], [.28, .3, .3, .28, .08], 0x3f9458, { mat: 'leaf', seg: 9, sub: 3 });
-    k.tube([[-.4, 2.95, 0], [-1, 3, 0], [-1.3, 3.4, 0], [-1.3, 4.05, 0], [-1.3, 4.35, 0]], [.25, .27, .26, .24, .06], 0x3f9458, { mat: 'leaf', seg: 9, sub: 3 });
+    k.tube([[.4, 2.3, 0], [1.05, 2.35, 0], [1.42, 2.8, 0], [1.42, 3.5, 0], [1.42, 3.95, 0]], [.28, .3, .3, .28, .08], 0x4e6c50, { mat: 'leaf', seg: 9, sub: 3 });
+    k.tube([[-.4, 2.95, 0], [-1, 3, 0], [-1.3, 3.4, 0], [-1.3, 4.05, 0], [-1.3, 4.35, 0]], [.25, .27, .26, .24, .06], 0x4e6c50, { mat: 'leaf', seg: 9, sub: 3 });
     fine(k, () => { for (let i = 0; i < 26; i++) { const a = i * 2.4, y = .4 + i * .18; k.cone(.018, .17, Math.cos(a) * .63, y, Math.sin(a) * .63, 0xf4ecc8, { mat: 'bone', seg: 3, rz: -Math.cos(a) * 1.35, rx: Math.sin(a) * 1.35 }); } });
     petals(k, 5.24, .34, 0xff5ea8, 0xffc0dc, 7, .45); k.ball(.09, 0, 5.34, 0, 0xffe080, { glow: 1 });
   } },
@@ -111,7 +133,7 @@ const DEF = {
     k.cyl(.68, 1.28, 10, 0, 5.8, 0, 0xb56a3c, { mat: 'stone', seg: 4, c2: 0xe39a55, ry: .78 }); k.cyl(.04, .78, .9, 0, 11.2, 0, 0xffc445, { seg: 4, ry: .78, glow: .8 });
     fine(k, () => { for (let y = 2.2; y < 9.6; y += 1.1) { const w = 1.08 - y * .05; k.box(.5, .14, .04, 0, y, w, 0xffc445, { glow: .9, bevel: .01 }); k.box(.14, .4, .04, (y * 7 % 3 - 1) * .14, y + .34, w - .02, 0xffc445, { glow: .9, bevel: .01 }); } });
   } },
-  pineSnow: { r: .8, s: [1, 2.2], make: k => { k.tube([[0, -.3, 0], [.05, 3, 0], [0, 9.4, 0]], [.7, .44, .08], 0x33304a, { mat: 'bark', seg: 8, sub: 2 }); pineTiers(k, 0x234d70, 0x4a84a8, [[2.3, 3.8, 3.6], [4.3, 3.1, 3.3], [6.1, 2.45, 3], [7.8, 1.7, 2.5]], true); } },
+  pineSnow: { r: .8, s: [1, 2.2], make: k => { k.tube([[0, -.3, 0], [.05, 3, 0], [0, 9.4, 0]], [.7, .44, .08], 0x33304a, { mat: 'bark', seg: 8, sub: 2 }); pineTiers(k, 0x234d70, 0x4a84a8, [[2, 4.1, 1.2], [3.1, 3.65, 1.2], [4.2, 3.15, 1.2], [5.3, 2.7, 1.2], [6.4, 2.2, 1.1], [7.4, 1.7, 1.1], [8.4, 1.15, 1.1], [9.2, .7, 1.2]], true); } },
   iceSpike: { r: 1, s: [.8, 2.8], make: k => { for (const [x, z, h, r, tilt] of [[0, 0, 7.2, 1.45, .05], [1.25, .4, 3.8, .78, -.18], [-1.05, -.6, 2.8, .66, .2], [.2, -1.15, 2.2, .5, .14]]) k.loft([[-.1, r * 1.02], [h * .3, r * .78], [h * .72, r * .34], [h, .01]], x, 0, z, 0x5d86e8, { seg: 7, flat: true, sub: 1, c2: 0xe9f5ff, glow: .22, mat: 'metal', rz: tilt }); } },
   crystal: { r: .6, s: [.7, 2], make: k => { for (const [x, z, h, r, c, tz, tx] of [[0, 0, 3.4, .78, 0x4fc2ff, .05, 0], [.82, .24, 1.9, .42, 0x8a6dff, -.32, .1], [-.72, -.3, 1.6, .36, 0x4fc2ff, .34, -.1], [.15, .78, 1.3, .3, 0x8a6dff, .05, .36]]) k.loft([[-.05, r * .62], [h * .16, r], [h * .74, r * .92], [h, .01]], x, 0, z, c, { seg: 6, flat: true, sub: 1, glow: .75, c2: 0xc8f4ff, rz: tz, rx: tx }); } },
   gear: { r: 2.5, s: [.7, 1.5], make: k => {
@@ -139,7 +161,9 @@ const DEF = {
 
 const NAMES = Object.keys(DEF);
 const typeIdx = Object.fromEntries(NAMES.map((n, i) => [n, i]));
-const cache = new Map();
+const cache = new Map(), TOWNS = POIS.filter(p => p.type === 'town');
+/** Zwischen den Häusern wächst Gras, nur nicht auf Platz, Wegen und in Gebäuden. */
+const townLawn = (x, z) => { const t = TOWNS.find(p => Math.hypot(p.x - x, p.z - z) < p.r + 46); return !!t && Math.hypot(t.x - x, t.z - z) > 29.5 && !onRoad(x, z) && !inBuilt(x, z, .55); };
 
 function chunkList(cx, cz) {
   const key = cx + cz * CHUNKS;
@@ -167,10 +191,10 @@ function chunkList(cx, cz) {
   const rg = RNG(Math.imul(cx + 11, 40503) ^ Math.imul(cz + 5, 65599));
   for (const r of seen) for (const [name, density] of Object.entries(REGIONS[r].props)) {
     if (name !== 'grass' && name !== 'dryGrass') continue;
-    const def = DEF[name], n = Math.round(density * 2.2);
+    const def = DEF[name], n = Math.round(density * 3.6);
     for (let i = 0; i < n; i++) {
       const x = x0 + rg() * CHUNK, z = z0 + rg() * CHUNK, ry = rg() * 6.283, s = rg.range(def.s[0], def.s[1] * 1.1);
-      if (regionIdx(x, z) !== r || blockedAt(x, z)) continue;
+      if (regionIdx(x, z) !== r || (blockedAt(x, z) && !townLawn(x, z))) continue;
       const y = heightAt(x, z);
       if (y < .75 || Math.abs(heightAt(x + 2, z) - y) + Math.abs(heightAt(x, z + 2) - y) > 2.2) continue;
       list.items.push({ t: typeIdx[name], x, y: y - .06, z, ry, s, grass: true, solid: false });
@@ -180,17 +204,19 @@ function chunkList(cx, cz) {
   return list;
 }
 
-const NEAR_SOLID = 105, NEAR_SMALL = 52;
+const NEAR_SOLID = 72, NEAR_SMALL = 52, LAWN_R = 34, LAWN_S = .92;
+const LIN = Float32Array.from({ length: 256 }, (_, i) => Math.pow(i / 255, 2.2)), LAWN = REGIONS.map(r => Math.min(1, ((r.props.grass || 0) + (r.props.dryGrass || 0)) / 150));
 
 export class Props {
   constructor(parent) {
     this.group = new THREE.Group();
     parent.add(this.group);
     this.cx = -999; this.cz = -999; this.lx = 1e9; this.lz = 1e9;
-    const inst = (geo, cap, shadow) => {
+    const inst = (geo, cap, shadow, tint) => {
       const m = new THREE.InstancedMesh(geo, MAT.solid, cap);
       m.frustumCulled = false; m.count = 0; m.castShadow = shadow; m.receiveShadow = true;
       m.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      if (tint) { m.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(cap * 3), 3); m.instanceColor.setUsage(THREE.DynamicDrawUsage); }
       this.group.add(m);
       return m;
     };
@@ -198,9 +224,15 @@ export class Props {
     NAMES.forEach((n, i) => {
       const k = new Kit(1000 + i, { lod: true }); DEF[n].make(k);
       const { hi, lo } = k.buildLOD(), small = !!DEF[n].grass;
-      this.near.push(inst(hi, small ? 2600 : 420, !small && !!DEF[n].r));
-      this.far.push(inst(lo, small ? 4200 : 1400, false));
+      const lawn = n === 'grass' || n === 'dryGrass';
+      const nm = inst(hi, lawn ? 5600 : small ? 2600 : 420, false, lawn);
+      this.near.push(nm);
+      // Schatten kommen aus der einfachen Form, das spart die Hälfte der Dreiecke.
+      if (!small && DEF[n].r) { const sm = new THREE.InstancedMesh(lo, SHADOW_ONLY, 420); sm.instanceMatrix = nm.instanceMatrix; sm.frustumCulled = false; sm.castShadow = true; sm.count = 0; sm.position.y = .14; this.group.add(sm); nm.userData.sm = sm; }
+      this.far.push(inst(lo, lawn ? 4600 : small ? 4200 : 1400, false, lawn));
     });
+    const lk = new Kit(1900); blades(lk, 4, .94, 0xb4b4a4, 0xffffff, .28);
+    this.lawn = inst(lk.build(), 5200, false, true); this.lawnX = 1e9; this.lawnZ = 1e9;
     this.radius = 3; this.grassRadius = 2; this.thin = false;
     // Bäume und große Pilze werfen einen weichen Schatten auf den Boden.
     setTerrainAO((x, z) => {
@@ -217,10 +249,36 @@ export class Props {
     const cx = clamp(Math.floor((x + HALF) / CHUNK), 0, CHUNKS - 1), cz = clamp(Math.floor((z + HALF) / CHUNK), 0, CHUNKS - 1);
     return chunkList(cx, cz).cols;
   }
+  /** Dichter Rasen direkt um die Spielfigur, auf einem festen Raster, damit nichts springt. */
+  updateLawn(px, pz, force) {
+    const m = this.lawn;
+    if (this.thin || !Kit.detail) { if (m.count) { m.count = 0; } this.lawnX = 1e9; return; }
+    if (!force && Math.hypot(px - this.lawnX, pz - this.lawnZ) < 3.5) return;
+    this.lawnX = px; this.lawnZ = pz;
+    const e = m.instanceMatrix.array, col = m.instanceColor.array, i0 = Math.floor((px - LAWN_R) / LAWN_S), i1 = Math.ceil((px + LAWN_R) / LAWN_S), j0 = Math.floor((pz - LAWN_R) / LAWN_S), j1 = Math.ceil((pz + LAWN_R) / LAWN_S);
+    let n = 0;
+    for (let j = j0; j <= j1 && n < 5200; j++) for (let i = i0; i <= i1 && n < 5200; i++) {
+      const h1 = hash(i, j), h2 = hash(i + 91, j - 37), x = (i + .1 + h1 * .8) * LAWN_S, z = (j + .1 + h2 * .8) * LAWN_S, d = Math.hypot(x - px, z - pz);
+      if (d > LAWN_R) continue;
+      const reg = regionIdx(x, z);
+      if (h2 * 1.7 % 1 > LAWN[reg] || (blockedAt(x, z) && !townLawn(x, z))) continue;
+      const y = heightAt(x, z);
+      if (y < .75 || Math.abs(heightAt(x + 1.5, z) - y) + Math.abs(heightAt(x, z + 1.5) - y) > 1.7) continue;
+      const fade = Math.min(1, (LAWN_R - d) / 7), sc = (.72 + h1 * .62) * fade, ry = h1 * 41 % 6.283, c = Math.cos(ry) * sc, s = Math.sin(ry) * sc, a = n * 16, q = colorAt(x, z), v = 1.85 + h2 * .6;
+      e[a] = c; e[a + 1] = 0; e[a + 2] = -s; e[a + 3] = 0; e[a + 4] = 0; e[a + 5] = sc * (.82 + h2 * .42); e[a + 6] = 0; e[a + 7] = 0; e[a + 8] = s; e[a + 9] = 0; e[a + 10] = c; e[a + 11] = 0; e[a + 12] = x; e[a + 13] = y - .05; e[a + 14] = z; e[a + 15] = 1;
+      col[n * 3] = LIN[q[0]] * v; col[n * 3 + 1] = LIN[q[1]] * v; col[n * 3 + 2] = LIN[q[2]] * v;
+      n++;
+    }
+    m.count = n; m.instanceMatrix.needsUpdate = true; m.instanceColor.needsUpdate = true;
+  }
   update(px, pz, force = false) {
+    this.updateLawn(px, pz, force);
     // Die Nahversion folgt der Spielfigur, deshalb wird schon nach kurzem Weg neu verteilt.
-    if (!force && Math.hypot(px - this.lx, pz - this.lz) < 18) return;
-    this.lx = px; this.lz = pz;
+    // Alles hinter der Kamera wird in der Ferne gar nicht erst gezeichnet.
+    const ce = G.camera?.matrixWorld.elements, fx = ce ? -ce[8] : 0, fz = ce ? -ce[10] : 1, fl = Math.hypot(fx, fz) || 1, vx = fx / fl, vz = fz / fl;
+    const turned = (vx * (this.vx ?? 0) + vz * (this.vz ?? 0)) < .955;
+    if (!force && !turned && Math.hypot(px - this.lx, pz - this.lz) < 18) return;
+    this.lx = px; this.lz = pz; this.vx = vx; this.vz = vz;
     const cx = clamp(Math.floor((px + HALF) / CHUNK), 0, CHUNKS - 1), cz = clamp(Math.floor((pz + HALF) / CHUNK), 0, CHUNKS - 1);
     this.cx = cx; this.cz = cz;
     for (const m of this.near) m.count = 0;
@@ -237,16 +295,22 @@ export class Props {
         // Sparmodus: Hindernisse bleiben sichtbar, von der Deko nur jedes dritte Stück.
         if (this.thin && !it.solid && n % 3) continue;
         const q = (it.x - px) ** 2 + (it.z - pz) ** 2, lim = it.solid ? NEAR_SOLID : NEAR_SMALL;
-        let m = !lowDetail && q < lim * lim ? this.near[it.t] : this.far[it.t];
+        const isNear = !lowDetail && q < lim * lim;
+        if (!isNear && q > 1600 && ((it.x - px) * vx + (it.z - pz) * vz) / Math.sqrt(q) < .16) continue;
+        let m = isNear ? this.near[it.t] : this.far[it.t];
         if (m.count >= m.instanceMatrix.count) m = this.far[it.t];
         if (m.count >= m.instanceMatrix.count) continue;
         const e = m.instanceMatrix.array, a = m.count * 16, c = Math.cos(it.ry) * it.s, s = Math.sin(it.ry) * it.s;
         e[a] = c; e[a + 1] = 0; e[a + 2] = -s; e[a + 3] = 0; e[a + 4] = 0; e[a + 5] = it.s; e[a + 6] = 0; e[a + 7] = 0;
         e[a + 8] = s; e[a + 9] = 0; e[a + 10] = c; e[a + 11] = 0; e[a + 12] = it.x; e[a + 13] = it.y; e[a + 14] = it.z; e[a + 15] = 1;
+        if (m.instanceColor) {
+          // Das Gras übernimmt die Bodenfarbe an seiner Stelle.
+          if (!it.col) { const q = colorAt(it.x, it.z), v = 1.9 + (it.ry % 1) * .5; it.col = [Math.pow(q[0] / 255, 2.2) * v, Math.pow(q[1] / 255, 2.2) * v, Math.pow(q[2] / 255, 2.2) * v]; }
+          m.instanceColor.array.set(it.col, m.count * 3);
+        }
         m.count++;
       }
     }
-    for (const m of this.near) m.instanceMatrix.needsUpdate = true;
-    for (const m of this.far) m.instanceMatrix.needsUpdate = true;
+    for (const m of [...this.near, ...this.far]) { m.instanceMatrix.needsUpdate = true; if (m.instanceColor) m.instanceColor.needsUpdate = true; if (m.userData.sm) m.userData.sm.count = m.count; }
   }
 }

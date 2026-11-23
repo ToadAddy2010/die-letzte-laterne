@@ -20,7 +20,7 @@ const TRINKETS = ['trinket1', 'trinket2'];
 export class Player {
   constructor(scene) {
     this.scene = scene;
-    this.light = new THREE.PointLight(0xffa83e, 34, 30, 1.6);
+    this.light = new THREE.PointLight(0xffb060, 10, 26, 1.8);
     scene.add(this.light);
     this.reset();
     this.rebuild();
@@ -285,7 +285,7 @@ export class Player {
     this.syncModel();
     if (riding) this.light.position.set(this.x - Math.sin(this.yaw) * 2.8, this.y + 8, this.z - Math.cos(this.yaw) * 2.8);
     else this.light.position.set(this.x + Math.sin(this.yaw + .9) * 2.5, this.y + (G.house ? 3.2 : 4.5), this.z + Math.cos(this.yaw + .9) * 2.5);
-    this.light.intensity = (G.house ? 16 : G.inDungeon ? 60 : 30 + (1 - (G.sky?.day ?? 0)) * 16) * (riding ? 1.35 : 1) + Math.sin(this.anim * 11) * 2.5;
+    this.light.intensity = (G.house ? 6 : G.inDungeon ? 22 : 1.5 + (1 - (G.sky?.day ?? 0)) * 10.5) * (riding ? 1.25 : 1) * (1 + Math.sin(this.anim * 11) * .05 + Math.sin(this.anim * 4.3) * .04);
     if (this.flame) this.light.color.set(this.flame); else this.light.color.set(0xffa83e);
   }
   /** Shift antippen lässt dich weiterrennen, Shift halten funktioniert wie gewohnt. So bleiben Finger und Tasten frei. */

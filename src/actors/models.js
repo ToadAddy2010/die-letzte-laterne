@@ -427,8 +427,8 @@ function special(s) {
     }
     body.tube([[-.1, .4, .515], [0, .36, .535], [.1, .4, .515]], .018, 0x2a1820, { mat: 'plain', seg: 4 });
     head.loft([[-.07, .92, .92], [-.02, 1.03, 1.03], [.14, .98, .98], [.4, .8, .8], [.62, .48, .48], [.74, .16, .16], [.78, .01, .01]], 0, 0, 0, c, { mat: 'plaster', c2: s.c2 ?? 0xff6a7d, seg: 26, shape: a => 1 + Math.sin(a * 5 + .6) * .018 });
-    head.loft([[-.075, .24, .24], [-.055, .92, .92]], 0, 0, 0, 0xf4e6d6, { mat: 'cloth', seg: 26, sub: 1 });
-    fine(head, () => { for (let i = 0; i < 28; i++) { const a = i / 28 * 6.283; head.box(.012, .045, .66, Math.cos(a) * .58, -.078, Math.sin(a) * .58, 0xd8c4b0, { mat: 'plain', ry: -a + HP, bevel: .003 }); } });
+    head.loft([[-.105, .24, .24], [-.08, .94, .94]], 0, 0, 0, 0xf4e6d6, { mat: 'cloth', seg: 26, sub: 1 });
+    fine(head, () => { for (let i = 0; i < 28; i++) { const a = i / 28 * 6.283; head.box(.012, .045, .66, Math.cos(a) * .58, -.108, Math.sin(a) * .58, 0xd8c4b0, { mat: 'plain', ry: -a + HP, bevel: .003 }); } });
     for (let i = 0; i < 8; i++) { const a = i * 2.4, q = .22 + i * .095, y = .78 * Math.sqrt(Math.max(.03, 1 - q * q)) - .01; head.ball(.13 - (i % 3) * .018, Math.cos(a) * q, y, Math.sin(a) * q, 0xfff4dc, { glow: .55, sy: .55 }); }
     arm.loft([[-.46, .075, .08], [-.36, .1, .1], [-.2, .09, .09], [.02, .085, .085]], 0, 0, 0, 0xe8ded0, { mat: 'plaster', seg: 10 });
   } else if (s.kind === 'ghost') {

@@ -1,5 +1,5 @@
 import * as THREE from '../../vendor/three.module.js';
-import { Kit, MAT } from '../core/gfx.js';
+import { Kit, MAT, SHADOW_ONLY } from '../core/gfx.js';
 import { RNG, strHash, TAU } from '../core/util.js';
 import { POIS } from '../data/world.js';
 import { regionAt, heightAt, onRoad } from './terrain.js';
@@ -80,12 +80,12 @@ function timber(k, W, H, y0, D, c) {
   }
 }
 function shroomHouse(k, r) {
-  const R = r.range(4, 5.8), h = r.range(5, 7), cap = r.pick([[0x7a2fb5, 0xc24ad0], [0xb82f4d, 0xff6a7d], [0x3347bd, 0x5f86ff], [0xc95a24, 0xffa640]]), CR = R * 1.78;
+  const R = r.range(4, 5.8), h = r.range(5, 7), cap = r.pick([[0x7a2fb5, 0xc24ad0], [0xb82f4d, 0xff6a7d], [0x5a5448, 0x857a62], [0xc95a24, 0xffa640]]), CR = R * 1.78;
   k.loft([[-.2, R * 1.14], [.45, R * 1.04], [h * .5, R * .93], [h * .82, R * .9], [h + .1, R]], 0, 0, 0, 0xe6dcc8, { mat: 'plaster', c2: 0xc9b9a8, seg: 22, fold: .018, foldN: 11, uv: .3 });
   k.loft([[0, R * 1.2], [.3, R * 1.16], [.62, R * 1.04]], 0, 0, 0, 0x6c6890, { mat: 'stone', seg: 22, sub: 2 });
   k.loft([[h - .5, R * .6], [h - .3, CR * .96], [h - .05, CR], [h + CR * .34, CR * .86], [h + CR * .62, CR * .54], [h + CR * .84, CR * .2], [h + CR * .9, .02]], 0, 0, 0, cap[0], { mat: 'plaster', c2: cap[1], seg: 30, uv: .24, shape: a => 1 + Math.sin(a * 5 + 1) * .016 });
-  k.loft([[h - .52, R * .58], [h - .31, CR * .95]], 0, 0, 0, 0xf6e4ff, { mat: 'cloth', seg: 30, sub: 1, glow: .28 });
-  fine(k, () => { for (let i = 0; i < 40; i++) { const a = i / 40 * TAU; k.box(.05, .08, CR * .62, Math.cos(a) * CR * .63, h - .42, Math.sin(a) * CR * .63, 0xc8b0dc, { mat: 'plain', ry: -a + HP, sharp: true }); } });
+  k.loft([[h - .64, R * .58], [h - .43, CR * .955]], 0, 0, 0, 0xf6e4ff, { mat: 'cloth', seg: 30, sub: 1, glow: .28 });
+  fine(k, () => { for (let i = 0; i < 76; i++) { const a = i / 76 * TAU; k.box(.028, .05, CR * .62, Math.cos(a) * CR * .63, h - .54, Math.sin(a) * CR * .63, 0xcfc4b0, { mat: 'plain', ry: -a + HP, sharp: true }); } });
   for (let i = 0; i < 10; i++) { const a = i * 2.4, q = CR * (.26 + (i % 4) * .17), y = h + CR * .9 * Math.sqrt(Math.max(.03, 1 - (q / CR) ** 2)) - .22; k.ball(.5 + (i % 3) * .14, Math.cos(a) * q, y, Math.sin(a) * q, 0xfff4dc, { glow: .55, sy: .6 }); }
   k.at(0, 0, R * 1.0); door(k, .02, 0x6b3a26); windows(k, R * 1.5, h * .66, -.06, WIN, 2); k.pop();
   k.tube([[R * .5, h + R * .7, -R * .3], [R * .58, h + R * 1.2, -R * .34], [R * .7, h + R * 1.6, -R * .3]], [.55, .5, .46], 0x7a6a78, { mat: 'brick', seg: 10 });
@@ -418,7 +418,8 @@ export function buildStructures(parent) {
       k.pop();
     }
     const lod = k.buildLOD(), m = new THREE.Mesh(lod.hi, MAT.solid);
-    m.userData.poi = p; m.userData.lod = lod; m.castShadow = true; m.receiveShadow = true;
+    m.userData.poi = p; m.userData.lod = lod; m.receiveShadow = true;
+    const sh = new THREE.Mesh(lod.lo, SHADOW_ONLY); sh.castShadow = true; sh.position.y = .16; m.userData.sh = sh; group.add(sh);
     group.add(m); meshes.push(m);
   }
   return {
@@ -426,7 +427,7 @@ export function buildStructures(parent) {
     update(x, z) {
       for (const m of meshes) {
         const p = m.userData.poi, d = Math.hypot(p.x - x, p.z - z), near = !G.settings.low && d < p.r + 190;
-        m.visible = d < 1150; m.castShadow = near && d < p.r + 130;
+        m.visible = d < 1150; m.userData.sh.visible = near && d < p.r + 130;
         const g = near ? m.userData.lod.hi : m.userData.lod.lo;
         if (m.geometry !== g) m.geometry = g;
       }

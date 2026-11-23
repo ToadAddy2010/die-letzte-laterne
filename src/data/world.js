@@ -1,19 +1,19 @@
 export const WORLD = 3200;
 
 export const REGIONS = [
-  { id: 'pilz', name: 'Die Pilzmark', c: [0, 180], base: 16, amp: 20, ridge: 6, dune: 0, low: 0x1c6a50, high: 0x2f8a63, alt: 0x27507f, rock: 0x4a4677, fogN: 0x1a1a58, fogD: 0x5a78bc, lvl: 2, music: 0,
+  { id: 'pilz', name: 'Die Pilzmark', c: [0, 180], base: 16, amp: 20, ridge: 6, dune: 0, low: 0x2f4a2b, high: 0x4f6c36, alt: 0x3b5240, rock: 0x5c5850, fogN: 0x10141c, fogD: 0x9fb0ae, lvl: 2, music: 0,
     props: { shroomBig: 13, shroomSmall: 30, treeBlue: 16, flowerBlue: 150, flowerPink: 80, grass: 170, rock: 5, glowcap: 18 } },
-  { id: 'forest', name: 'Der Düsterforst', c: [-820, 200], base: 22, amp: 32, ridge: 16, dune: 0, low: 0x123f3a, high: 0x1c5a45, alt: 0x1c2e5e, rock: 0x34325a, fogN: 0x0e1636, fogD: 0x35637a, lvl: 6, music: 1,
+  { id: 'forest', name: 'Der Düsterforst', c: [-820, 200], base: 22, amp: 32, ridge: 16, dune: 0, low: 0x2b4630, high: 0x3e5c39, alt: 0x2a3a30, rock: 0x46453f, fogN: 0x0b1016, fogD: 0x71878a, lvl: 6, music: 1,
     props: { pine: 50, treeTwist: 12, grass: 120, flowerBlue: 34, flowerPink: 14, shroomSmall: 9, rock: 7, stump: 4, glowcap: 10 } },
-  { id: 'moor', name: 'Das Knochenmoor', c: [-240, 1080], base: 2, amp: 5.5, ridge: 0, dune: 0, low: 0x2e3a36, high: 0x4c4a38, alt: 0x3b2c5a, rock: 0x3c3350, fogN: 0x171a38, fogD: 0x5f6655, lvl: 10, music: 2,
+  { id: 'moor', name: 'Das Knochenmoor', c: [-240, 1080], base: 2, amp: 5.5, ridge: 0, dune: 0, low: 0x3a3b2b, high: 0x56513b, alt: 0x35352f, rock: 0x4b473f, fogN: 0x10121a, fogD: 0x7e7e6c, lvl: 10, music: 2,
     props: { treeDead: 13, reed: 46, grave: 6, rock: 3, bones: 4, glowcap: 16, grass: 30 } },
-  { id: 'desert', name: 'Die Glutwüste', c: [900, 430], base: 18, amp: 15, ridge: 6, dune: 12, low: 0xc98a3c, high: 0xe4ae55, alt: 0xa8602e, rock: 0x8a4630, fogN: 0x2a1a50, fogD: 0xe0a062, lvl: 13, music: 3,
+  { id: 'desert', name: 'Die Glutwüste', c: [900, 430], base: 18, amp: 15, ridge: 6, dune: 12, low: 0xa98a5c, high: 0xc6a877, alt: 0x8f6a44, rock: 0x7a5a42, fogN: 0x1c1620, fogD: 0xcfb48e, lvl: 13, music: 3,
     props: { cactus: 8, rockRed: 8, dryGrass: 18, bones: 2, obelisk: .35 } },
-  { id: 'frost', name: 'Der Frostkamm', c: [-120, -920], base: 48, amp: 42, ridge: 58, dune: 0, low: 0x8ba6e8, high: 0xd6e4ff, alt: 0x5f7fd0, rock: 0x3e4a8c, fogN: 0x1c2c72, fogD: 0x93b4ea, lvl: 16, music: 4,
+  { id: 'frost', name: 'Der Frostkamm', c: [-120, -920], base: 48, amp: 42, ridge: 58, dune: 0, low: 0x9aa8b8, high: 0xdfe5ec, alt: 0x7f8fa4, rock: 0x4a5260, fogN: 0x131a2a, fogD: 0xb6c4d2, lvl: 16, music: 4,
     props: { pineSnow: 18, iceSpike: 12, crystal: 9, rockIce: 6 } },
-  { id: 'clock', name: 'Die Uhrwerkhöhen', c: [900, -760], base: 34, amp: 24, ridge: 24, dune: 0, low: 0x6a4a3c, high: 0x8c6a42, alt: 0x4a3a66, rock: 0x4a3550, fogN: 0x1e1444, fogD: 0xa07260, lvl: 19, music: 5,
+  { id: 'clock', name: 'Die Uhrwerkhöhen', c: [900, -760], base: 34, amp: 24, ridge: 24, dune: 0, low: 0x5a4a3a, high: 0x766244, alt: 0x4a4038, rock: 0x4a4038, fogN: 0x15121c, fogD: 0x9c8472, lvl: 19, music: 5,
     props: { gear: 3, pillar: 2.5, rock: 5, copperTree: 6, dryGrass: 22, crystal: 1 } },
-  { id: 'ash', name: 'Die Aschenöde', c: [-860, -820], base: 30, amp: 22, ridge: 32, dune: 0, low: 0x221a30, high: 0x3a2a42, alt: 0x4a1c2a, rock: 0x181428, fogN: 0x120824, fogD: 0x4f2340, lvl: 23, music: 6,
+  { id: 'ash', name: 'Die Aschenöde', c: [-860, -820], base: 30, amp: 22, ridge: 32, dune: 0, low: 0x27232b, high: 0x3b3335, alt: 0x3f2725, rock: 0x1f1c21, fogN: 0x0c0a10, fogD: 0x5c4842, lvl: 23, music: 6,
     props: { spike: 14, treeDead: 9, ember: 18, rockDark: 7, bones: 2 } },
 ];
 
