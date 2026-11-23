@@ -164,6 +164,17 @@ export class Audio2 {
   dodge() { this.noise(.1, .05, 3400); }
   roll() { this.noise(.26, .07, 500, 'lowpass'); }
   jump() { this.tone(280, .13, 'triangle', .05, 0, 1.6); }
+  /** Regen als leises Dauerrauschen. */
+  setRain(v) {
+    if (!this.ctx) return;
+    if (!this.rainG) {
+      const s = this.ctx.createBufferSource(), f = this.ctx.createBiquadFilter(), h = this.ctx.createBiquadFilter(); this.rainG = this.ctx.createGain(); this.rainG.gain.value = 0;
+      s.buffer = this.noiseBuf; s.loop = true; f.type = 'lowpass'; f.frequency.value = 5200; h.type = 'highpass'; h.frequency.value = 620;
+      s.connect(h); h.connect(f); f.connect(this.rainG); this.rainG.connect(this.sfx); s.start();
+    }
+    if (Math.abs(v - (this.rainV ?? 0)) > .01) { this.rainV = v; this.rainG.gain.setTargetAtTime(v * .052, this.ctx.currentTime, .9); }
+  }
+  thunder() { if (!this.ctx) return; this.noise(2.3, .22, 150, 'lowpass'); this.noise(.5, .16, 620, 'lowpass'); this.noise(1.2, .11, 300, 'lowpass', .34); this.tone(44, 1.9, 'sine', .2, 0, .6); }
   deny() { this.tone(120, .13, 'square', .06); }
   tick() { this.tone(1300, .035, 'triangle', .045); }
   page() { this.noise(.18, .05, 3800); this.noise(.1, .03, 1800, 'bandpass', .1); }

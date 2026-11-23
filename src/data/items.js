@@ -120,3 +120,18 @@ export const CHEST_LOOT = [
   ['trank3', 'mana3', 'zahnrad', 'goldbarren', 'zahnradhammer', 'runenrobe', 'zahnradring'],
   ['trank3', 'mana3', 'elixier', 'schattenstaub', 'goldbarren', 'mondsichel', 'mondstein'],
 ];
+
+// Legendäre Beute: Sie fällt nur bei Elite-Monstern, Bossen und aus Mondrissen.
+const L = o => Object.assign(o, { rare: 1 });
+W('funkenbrecher', 'Funkenbrecher', 'sword', 24, 700, 2, 0xff9a3a, 'Bei jedem Schlag stieben Funken, die nie ganz erlöschen.', { fx: { crit: .08, kraft: 3 } });
+R('wolfsauge', 'Wolfsauge', 900, 3, { crit: .1, speed: .05 }, '+10 % kritisch, +5 % Tempo. Es blinzelt manchmal.');
+W('nachtsplitter', 'Nachtsplitter', 'dagger', 42, 1400, 4, 0x9a5aff, 'Eine Klinge aus dem dunkelsten Teil der Nacht.', { fx: { crit: .16, speed: .06 } });
+R('herzglut', 'Herzglut', 1500, 4, { regen: 3, hp: 50 }, '+50 Leben und ständige Heilung. Das Amulett ist warm.');
+A('aschenmantel', 'Mantel der Asche', 34, 2100, 5, { top: 0x3a2a2a, armor: 0x6a4a3a, bottom: 0x241a1a, hat: 'hood', hatColor: 0x2a1c1c, cape: 0xc2401c, cape2: 0xff9a30 }, 'Er glimmt an den Säumen und brennt doch nie ab.', { hp: 70, fx: { speed: .07 } });
+W('wintereid', 'Wintereid', 'great', 74, 2800, 6, 0xbfe8ff, 'Wer ihn schwört, friert nie wieder. Wer ihn bricht, sofort.', { fx: { kraft: 6, ausdauer: 4 } });
+R('eisenwille', 'Eisenwille', 3000, 6, { kraft: 8, ausdauer: 8 }, '+8 Kraft, +8 Ausdauer. Ein schwerer, ehrlicher Ring.');
+R('totenkerze', 'Totenkerze', 3400, 7, { geist: 10, mp: 60 }, '+10 Geist, +60 Mana. Sie brennt mit kaltem Licht.');
+W('grabgesang', 'Grabgesang', 'scythe', 98, 4600, 7, 0x7ff2c8, 'Die Sense summt leise, wenn jemand in der Nähe stirbt.', { sp: 18, fx: { geist: 8, regen: 2 } });
+A('blutharnisch', 'Blutharnisch', 70, 5600, 8, { top: 0x3a1018, armor: 0x8a1c2c, bottom: 0x20090e, hat: 'horns', hatColor: 0x3a1018, cape: 0x6a1020 }, 'Geschmiedet unter dem Blutmond.', { hp: 170, fx: { kraft: 5 } });
+W('sonnenbrecher', 'Sonnenbrecher', 'hammer', 128, 6400, 8, 0xffc445, 'Ein Hammer, der einst eine Sonne aufhielt.', { fx: { kraft: 10, crit: .06 } });
+for (const id of ['funkenbrecher', 'wolfsauge', 'nachtsplitter', 'herzglut', 'aschenmantel', 'wintereid', 'eisenwille', 'totenkerze', 'grabgesang', 'blutharnisch', 'sonnenbrecher']) L(ITEMS[id]);

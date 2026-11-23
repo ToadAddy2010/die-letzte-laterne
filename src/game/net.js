@@ -9,6 +9,8 @@ import { POI } from '../data/world.js';
 import { angDiff, clamp, damp } from '../core/util.js';
 import { resolve } from '../world/collision.js';
 import { groundY } from './fx.js';
+import { Link, cleanName } from './p2p.js';
+import { KINDS } from '../world/weather.js';
 
 const F = { dead: 1, down: 2, busy: 4, ride: 8, ground: 16, roll: 32, block: 64 };
 const r1 = v => Math.round(v * 10) / 10, r2 = v => Math.round(v * 100) / 100;
@@ -99,23 +101,32 @@ export class Net {
   /** Erst mit einem verbundenen Partner läuft die Welt im Menü weiter. */
   get active() { return !!this.remote; }
   get duelOn() { return this.duel?.state === 'run'; }
-  /** Läuft das Spiel über den Internet-Link statt auf dem PC des Gastgebers? */
-  get isInvited() { return !window.LL_STATIC && /\.trycloudflare\.com$/i.test(location.hostname); }
-  /** Auf GitHub Pages gibt es keinen Spielserver und damit keinen Multiplayer. */
-  get available() { return !window.LL_STATIC; }
+  get isInvited() { return false; }
+  /** Läuft ohne eigenen Server direkt von Browser zu Browser. */
+  get available() { return !!window.RTCPeerConnection && !!globalThis.crypto?.getRandomValues; }
   area() { return G.house ? `h:${G.house.id}` : G.inDungeon ? `d:${G.inDungeon}` : 'w'; }
-  send(obj) { if (this.ws?.readyState === 1) this.ws.send(JSON.stringify(obj)); }
+  send(obj) { if (this.ws?.readyState === 1) this.ws.send(obj); }
   refresh() { if (G.mode === 'panel' && G.ui.tab === 'party') G.ui.drawPanel(); }
 
   // ── Verbindung ──
   connect(hello) {
     this.drop();
     this.error = '';
-    const ws = this.ws = new WebSocket(`${location.protocol === 'https:' ? 'wss' : 'ws'}://${location.host}/ws`);
-    ws.onopen = () => ws.send(JSON.stringify(hello));
-    ws.onmessage = e => { try { this.handle(JSON.parse(e.data)); } catch (err) { console.error(err); } };
+    const ws = this.ws = new Link(hello);
+    ws.onmessage = m => { try { this.handle(m); } catch (err) { console.error(err); } };
     ws.onclose = () => { if (this.ws === ws) this.closed(); };
-    ws.onerror = () => { if (this.ws === ws && !this.error) this.error = 'Keine Verbindung zum Server.'; };
+    ws.onerror = text => { if (this.ws === ws && text && !this.error) this.error = text; };
+    ws.onask = (name, answer) => { if (this.ws === ws) this.askJoin(name, answer); };
+    ws.start();
+  }
+  /** Niemand kommt ohne Zustimmung des Gastgebers in die Welt. */
+  askJoin(name, answer) {
+    clearTimeout(this.joinT);
+    if (!name) { if (this.joinAsk) { this.joinAsk = null; G.netui.ask(null); } return; }
+    this.joinAsk = yes => { clearTimeout(this.joinT); this.joinAsk = null; G.netui.ask(null); answer(yes); };
+    this.joinT = setTimeout(() => this.joinAsk?.(false), 40000);
+    G.netui.askPlayer(`${name} möchte in deine Welt`);
+    G.audio?.quest();
   }
   host() { if (this.isHost) return; this.role = 'host'; this.room = { state: 'opening' }; this.connect({ t: 'hello', role: 'host' }); this.refresh(); }
   join(code, name) { this.role = 'guest'; this.myName = name; this.connect({ t: 'hello', role: 'guest', code, name }); }
@@ -136,7 +147,7 @@ export class Net {
   leave() {
     if (this.isGuest) this.saveChar();
     const was = this.isGuest;
-    this.drop(); this.role = null; this.room = null; this.pendingSave = null;
+    this.joinAsk = null; this.drop(); this.role = null; this.room = null; this.pendingSave = null;
     if (was) G.ui.toast('Verbindung beendet', 'warn');
     this.refresh();
   }
@@ -158,7 +169,7 @@ export class Net {
       case 'opened': this.room = { state: 'open', code: m.code, url: m.url || null }; this.error = m.error || ''; G.audio?.chime(); this.refresh(); break;
       case 'denied': this.error = m.why || 'Beitritt nicht möglich.'; if (this.isGuest) G.netui.joinPane(this.lastCode, this.error); this.refresh(); break;
       case 'joined': this.myName = m.name; this.pendingSave = m.save; break;
-      case 'peer': this.onPeer(m.name); break;
+      case 'peer': this.onPeer(cleanName(m.name) || 'Gast'); break;
       case 'peerLeft': { const n = this.remote?.name; this.clearRemote(); G.netui.line(null, `${n || 'Dein Mitspieler'} hat das Spiel verlassen.`); G.ui.toast(`${n || 'Mitspieler'} ist gegangen`, 'warn'); this.refresh(); break; }
       case 'hostLeft': this.error = 'Der Gastgeber hat den Raum geschlossen.'; break;
       case 'welcome': this.onWelcome(m); break;
@@ -166,11 +177,11 @@ export class Net {
       case 'look': this.remote?.setLook(m.e); break;
       case 'e': if (this.isGuest && G.mode !== 'menu' && G.enemies.applySnapshot(m)) this.send({ t: 'eReset' }); break;
       case 'eReset': if (this.isHost) this.known.clear(); break;
-      case 'clock': if (this.isGuest) { G.hour = num(m.h, 0, 24); G.day = m.d | 0; G.moonGaze = num(m.g, 0, 60); if (m.b) G.bossDead = m.b; } break;
+      case 'clock': if (this.isGuest) { G.hour = num(m.h, 0, 24); G.day = m.d | 0; G.moonGaze = num(m.g, 0, 60); if (m.b) G.bossDead = m.b; if (KINDS[m.w]) G.weather.set(KINDS[m.w], true); G.bloodMoon = !!m.bm; } break;
       case 'quests': if (this.isGuest) G.quests.mirror(m.s, m.tr); break;
       case 'q': if (this.isHost) this.onQuest(m); break;
       case 'lit': if (this.isHost && POI[m.id]?.type === 'shrine' && !G.discovered[m.id]) { G.discovered[m.id] = 1; if (G.shrineFlames?.[m.id]) G.shrineFlames[m.id].visible = true; G.quests.reachCheck(P); } break;
-      case 'hit': if (this.isHost) { const e = G.enemies.list.find(x => x.id === m.id); if (e) e.hurt(num(m.d, 1, 99999), { crit: !!m.c, spell: !!m.sp, kx: num(m.kx, -1, 1), kz: num(m.kz, -1, 1), knock: num(m.k, 0, 12), slow: num(m.sl, 0, 6) }); } break;
+      case 'hit': if (this.isHost) { const e = G.enemies.list.find(x => x.id === m.id); if (e) e.hurt(num(m.d, 1, 99999), { crit: !!m.c, spell: !!m.sp, kx: num(m.kx, -1, 1), kz: num(m.kz, -1, 1), knock: num(m.k, 0, 12), slow: num(m.sl, 0, 6), post: num(m.p, 0, 14), finish: !!m.f }); } break;
       case 'hurt': if (!P.dead) P.hurt(num(m.a, 0, 99999), { x: m.x, z: m.z }, { slow: num(m.slow, 0, 8) }); break;
       case 'kill': if (this.isGuest) this.onKillShare(m); break;
       case 'reward': if (this.isGuest) this.onReward(m); break;
@@ -191,7 +202,7 @@ export class Net {
     this.clearRemote();
     this.remote = new Remote(name, this.scene, true);
     const P = G.player;
-    this.send({ t: 'welcome', name: this.myName || 'Gastgeber', x: r1(P.x), z: r1(P.z), h: G.hour, day: G.day, g: G.moonGaze || 0, bossDead: G.bossDead, borke: G.flags.borke || 0, dungeon: G.house ? null : G.inDungeon, door: G.house ? [G.house.doorX, G.house.doorZ] : null, q: G.quests.toJSON(), e: P.equip });
+    this.send({ t: 'welcome', name: this.myName || G.profiles?.cur?.name || 'Gastgeber', x: r1(P.x), z: r1(P.z), h: G.hour, day: G.day, g: G.moonGaze || 0, bossDead: G.bossDead, borke: G.flags.borke || 0, dungeon: G.house ? null : G.inDungeon, door: G.house ? [G.house.doorX, G.house.doorZ] : null, q: G.quests.toJSON(), e: P.equip });
     this.lastQuests = JSON.stringify(G.quests.toJSON());
     G.audio?.quest(); G.ui.banner(name, 'ist deinem Spiel beigetreten');
     G.netui.line(null, `${name} ist beigetreten. ${G.touch?.on ? 'Tippe auf Chat zum Schreiben.' : 'Drück Enter zum Schreiben.'}`);
@@ -199,7 +210,7 @@ export class Net {
   }
   onWelcome(m) {
     this.clearRemote();
-    this.remote = new Remote(typeof m.name === 'string' ? m.name.slice(0, 16) : 'Gastgeber', this.scene, false);
+    this.remote = new Remote(cleanName(m.name) || 'Gastgeber', this.scene, false);
     this.remote.setLook(m.e);
     G.game.startGuest(this.pendingSave, m);
     this.sendLook();
@@ -219,7 +230,7 @@ export class Net {
     if (this.tP <= 0) { this.tP = .066; this.sendState(); }
     if (this.isHost) {
       this.tE -= dt; if (this.tE <= 0) { this.tE = .083; this.sendEnemies(); }
-      this.tClock -= dt; if (this.tClock <= 0) { this.tClock = 1; this.send({ t: 'clock', h: r2(G.hour), d: G.day, g: r1(G.moonGaze || 0), b: G.bossDead }); }
+      this.tClock -= dt; if (this.tClock <= 0) { this.tClock = 1; this.send({ t: 'clock', h: r2(G.hour), d: G.day, g: r1(G.moonGaze || 0), b: G.bossDead, w: G.weather.id, bm: G.bloodMoon ? 1 : 0 }); }
       this.tQuests -= dt;
       if (this.tQuests <= 0) { this.tQuests = .33; const q = G.quests.toJSON(), s = JSON.stringify(q); if (s !== this.lastQuests) { this.lastQuests = s; this.send({ t: 'quests', s: q.state, tr: q.tracked }); } }
     } else {
@@ -237,8 +248,8 @@ export class Net {
     if (here) for (const e of G.enemies.list) {
       if (Math.hypot(e.x - R.x, e.z - R.z) > 210 && e !== bossE) continue;
       now.add(e.id);
-      if (!this.known.has(e.id)) n.push([e.id, e.type, e.maxHp, e.lv]);
-      s.push([e.id, r1(e.x), r1(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)), r2(e.atk), (e.dead ? 1 : 0) | (e.boss ? 2 : 0) | (bossE === e ? 4 : 0) | (e.aggro && e.state !== 'idle' && e.state !== 'return' ? 8 : 0)]);
+      if (!this.known.has(e.id)) n.push([e.id, e.type, e.maxHp, e.lv, e.elite || 0]);
+      s.push([e.id, r1(e.x), r1(e.z), r2(e.yaw), Math.max(0, Math.round(e.hp)), r2(e.atk), (e.dead ? 1 : 0) | (e.boss ? 2 : 0) | (bossE === e ? 4 : 0) | (e.aggro && e.state !== 'idle' && e.state !== 'return' ? 8 : 0) | (e.stun > 0 ? 16 : 0)]);
     }
     this.known = now;
     this.send({ t: 'e', n, s });
@@ -255,13 +266,14 @@ export class Net {
   }
   boltTargets() { const R = this.remote; return R?.targetable() ? [G.player, R] : [G.player]; }
   worldAnchors(P) { const R = this.remote; return R && R.area === 'w' ? [P, R] : [P]; }
-  sendHit(e, dmg, o) { this.send({ t: 'hit', id: e.id, d: dmg, c: o.crit ? 1 : 0, sp: o.spell ? 1 : 0, kx: r2(o.kx || 0), kz: r2(o.kz || 0), k: o.knock || 0, sl: o.slow || 0 }); }
+  sendHit(e, dmg, o) { this.send({ t: 'hit', id: e.id, d: dmg, c: o.crit ? 1 : 0, sp: o.spell ? 1 : 0, kx: r2(o.kx || 0), kz: r2(o.kz || 0), k: o.knock || 0, sl: o.slow || 0, p: r1(o.post ?? (o.spell ? .6 : 1)), f: o.finish ? 1 : 0 }); }
   onEnemyDied(e) {
     const R = this.remote;
     if (!this.isHost || !R || R.area !== this.area()) return;
     const d = e.d, items = [];
     if (e.boss) items.push(...(d.loot || []).filter(id => ITEMS[id]?.t !== 'quest'));
     else if (!e.summoned) for (const [id, p] of d.drops || []) if (p > 0 && ITEMS[id]?.t !== 'quest' && Math.random() < p) items.push(id);
+    if (e.elite && Math.random() < .22) { const id = G.enemies.pickLegend(e.lv); if (id) items.push(id); }
     this.send({ t: 'kill', x: e.xp, g: d.gold ? Math.round(d.gold * (.7 + Math.random() * .6)) : 0, d: items, ty: e.type, b: e.boss ? 1 : 0, n: d.n });
   }
   onKillShare(m) {

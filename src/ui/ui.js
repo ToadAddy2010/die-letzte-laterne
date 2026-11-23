@@ -1,6 +1,7 @@
 import * as THREE from '../../vendor/three.module.js';
 import { G } from '../game/state.js';
 import { Input } from '../core/input.js';
+import { TALENTS, TREES, FEATS } from '../data/extras.js';
 import { ITEMS, SPELLS, SHOPS, TOWN_TIER } from '../data/items.js';
 import { QUESTS } from '../data/quests.js';
 import { POIS, POI, REGIONS, REGION_INFO, WORLD } from '../data/world.js';
@@ -27,7 +28,7 @@ export class UI {
         <div id="xp"><i id="xpI"></i></div><div id="gold"></div></div>
       <div id="compass"></div><div id="clock"></div><canvas id="mini" width="158" height="158"></canvas>
       <div id="tracker"></div><div id="hotbar"></div><div id="prompt"></div><div id="toasts"></div>
-      <div id="boss"><b id="bossN"></b><div class="bar"><i id="bossI"></i></div></div>
+      <div id="boss"><b id="bossN"></b><div class="bar"><i id="bossI"></i></div><div id="bossP"><i></i></div></div>
       <div id="banner"><h1></h1><p></p></div><div id="qpop" class="frame"><small></small><h3></h3></div><div id="subtitle"></div><div id="whisper" class="frame"><small>Stimme aus der Laterne</small><b></b><span></span></div>
       <div id="click">Klicken, um weiterzuspielen</div><div id="floats"></div><div id="ehps"></div><div id="lockmark"></div>
     </div>
@@ -47,7 +48,7 @@ export class UI {
     $('loadTip').textContent = TIPS[Math.floor(Math.random() * TIPS.length)];
     $('respawn').onclick = () => G.game.respawn();
     $('loreX').onclick = () => this.closeLore();
-    for (let i = 0; i < 14; i++) { const d = document.createElement('div'); d.className = 'ehp'; d.innerHTML = '<i></i>'; d.style.display = 'none'; $('ehps').appendChild(d); this.ehps.push(d); }
+    for (let i = 0; i < 14; i++) { const d = document.createElement('div'); d.className = 'ehp'; d.innerHTML = '<i></i><u></u>'; d.style.display = 'none'; $('ehps').appendChild(d); this.ehps.push(d); }
     this.compass();
     this.fog = new Uint8Array(FOG * FOG);
   }
@@ -130,10 +131,10 @@ export class UI {
   updateEnemyBars(P) {
     let n = 0;
     for (const e of G.enemies.list) {
-      if (e.dead || e.boss || e.hp >= e.maxHp || n >= this.ehps.length) continue;
+      if (e.dead || e.boss || (e.hp >= e.maxHp && !e.elite) || n >= this.ehps.length) continue;
       if (Math.hypot(e.x - P.x, e.z - P.z) > 42) continue;
       const q = this.project(e.x, e.y + e.model.height + .5, e.z); if (!q) continue;
-      const d = this.ehps[n++], w = 48; d.style.display = 'block'; d.style.left = `${q[0]}px`; d.style.top = `${q[1]}px`; d.style.width = `${w}px`; d.firstChild.style.width = `${e.hp / e.maxHp * 100}%`;
+      const d = this.ehps[n++], w = e.elite ? 84 : 48; d.dataset.n = e.title || ''; d.classList.toggle('elite', !!e.elite); d.classList.toggle('stun', e.stun > 0); d.children[1].style.width = `${e.stun > 0 ? 100 : clamp((e.posture || 0) / (e.pMax || 1)) * 100}%`; d.style.display = 'block'; d.style.left = `${q[0]}px`; d.style.top = `${q[1]}px`; d.style.width = `${w}px`; d.firstChild.style.width = `${e.hp / e.maxHp * 100}%`;
     }
     for (; n < this.ehps.length; n++) this.ehps[n].style.display = 'none';
     const L = $('lockmark');
@@ -183,7 +184,7 @@ export class UI {
   bossBar(e) {
     const b = $('boss');
     if (!e) { b.style.display = 'none'; return; }
-    b.style.display = 'block'; $('bossN').textContent = e.d.n; $('bossI').style.width = `${clamp(e.hp / e.maxHp) * 100}%`;
+    b.style.display = 'block'; $('bossN').textContent = e.d.n; $('bossI').style.width = `${clamp(e.hp / e.maxHp) * 100}%`; { const q = $('bossP'); q.classList.toggle('stun', e.stun > 0); q.firstChild.style.width = `${e.stun > 0 ? 100 : clamp((e.posture || 0) / (e.pMax || 1)) * 100}%`; }
   }
   banner(t, s) { const b = $('banner'); b.querySelector('h1').textContent = t; b.querySelector('p').textContent = s || ''; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
   questPop(h, t) { const b = $('qpop'); b.querySelector('small').textContent = h; b.querySelector('h3').textContent = t; b.classList.remove('on'); void b.offsetWidth; b.classList.add('on'); }
@@ -267,10 +268,10 @@ export class UI {
   closePanel() { G.audio?.panelClose(); $('panel').style.display = 'none'; this.shop = null; G.mode = 'play'; this.show(true); this.refreshTracker(); G.game.resumeLock(); }
   openShop(n) { this.shop = n; this.shopMode = 'buy'; this.sel = null; this.tab = 'shop'; G.mode = 'panel'; Input.unlock(); Input.clear(); $('panel').style.display = 'flex'; this.show(false); this.drawPanel(); G.audio?.panel('shop'); }
   drawPanel() {
-    const tabs = this.shop ? [['shop', `Handel: ${this.shop.d.n}`]] : [['inv', 'Inventar'], ['char', 'Charakter'], ['spell', 'Zauber'], ['quest', 'Quests'], ['map', 'Weltkarte'], ['journal', 'Journal'], ...(G.net?.available ? [['party', G.net.active ? `Team: ${G.net.remote.name}` : 'Multiplayer']] : []), ['sys', 'System']];
+    const tabs = this.shop ? [['shop', `Handel: ${this.shop.d.n}`]] : [['inv', 'Inventar'], ['char', 'Charakter'], ['talent', G.player.talentPts > 0 ? `Talente (${G.player.talentPts})` : 'Talente'], ['spell', 'Zauber'], ['quest', 'Quests'], ['map', 'Weltkarte'], ['journal', 'Journal'], ['feat', `Erfolge ${G.feats.count()}/${FEATS.length}`], ...(G.net?.available ? [['party', G.net.active ? `Team: ${G.net.remote.name}` : 'Multiplayer']] : []), ['sys', 'System']];
     $('tabs').innerHTML = tabs.map(([k, t]) => `<button data-t="${k}" class="${this.tab === k ? 'on' : ''}">${esc(t)}</button>`).join('') + `<button class="x" data-x="1">${Input.touch ? 'Schließen' : 'Schließen (Esc)'}</button>`;
     for (const b of $('tabs').querySelectorAll('button')) b.onclick = () => { if (b.dataset.x) this.closePanel(); else { this.tab = b.dataset.t; this.sel = null; this.drawPanel(); G.audio?.panel(this.tab); } };
-    ({ inv: () => this.pInv(), char: () => this.pChar(), spell: () => this.pSpell(), quest: () => this.pQuest(), map: () => this.pMap(), journal: () => this.pJournal(), party: () => G.netui.panel($('pbody')), sys: () => this.pSys(), shop: () => this.pShop() })[this.tab]();
+    ({ inv: () => this.pInv(), char: () => this.pChar(), talent: () => this.pTalent(), feat: () => this.pFeat(), spell: () => this.pSpell(), quest: () => this.pQuest(), map: () => this.pMap(), journal: () => this.pJournal(), party: () => G.netui.panel($('pbody')), sys: () => this.pSys(), shop: () => this.pShop() })[this.tab]();
   }
   itemDetail(it, extra = '') {
     if (!it) return '<div class="detail"><p style="color:var(--dim)">Wähle einen Gegenstand.</p></div>';
@@ -280,7 +281,7 @@ export class UI {
     if (it.heal) s += `<div class="stat">Heilt<b>${it.heal}</b></div>`;
     if (it.mana) s += `<div class="stat">Mana<b>${it.mana}</b></div>`;
     if (it.price) s += `<div class="stat">Wert<b>${it.price} Gold</b></div>`;
-    return `<div class="detail"><h2 class="t-${it.t}">${esc(it.n)}</h2><small style="color:var(--dim)">${TYPE[it.t]}</small><p>${esc(it.d || '')}</p>${s}${extra}</div>`;
+    return `<div class="detail"><h2 class="t-${it.t}${it.rare ? ' legend' : ''}">${esc(it.n)}</h2><small style="color:var(--dim)">${it.rare ? '<span class="legend">Legendär</span> · ' : ''}${TYPE[it.t]}</small><p>${esc(it.d || '')}</p>${s}${extra}</div>`;
   }
   cmp(l, a, b = 0) { const d = a - b; return `<div class="stat">${l}<b>${a} ${d ? `<span class="${d > 0 ? 'up' : 'down'}">(${d > 0 ? '+' : ''}${d})</span>` : ''}</b></div>`; }
   pInv() {
@@ -303,8 +304,19 @@ export class UI {
     if ($('unq')) $('unq').onclick = () => { for (const s of ['trinket1', 'trinket2']) if (P.equip[s] === sel) P.unequip(s); this.drawPanel(); };
     if ($('use')) $('use').onclick = () => { P.potionCd = 0; P.drink(sel); this.drawPanel(); };
   }
-  itemRow(id, sel, n, eq, right = '') { const it = ITEMS[id]; return `<button class="row ${id === sel ? 'sel' : ''} ${eq ? 'eq' : ''}" data-id="${id}"><span class="icon t-${it.t}">${ICON[it.t]}</span><span class="nm t-${it.t}">${esc(it.n)}</span><span class="ct">${right || (n > 1 ? `×${n}` : '')}</span></button>`; }
+  itemRow(id, sel, n, eq, right = '') { const it = ITEMS[id]; return `<button class="row ${id === sel ? 'sel' : ''} ${eq ? 'eq' : ''}" data-id="${id}"><span class="icon t-${it.t}">${ICON[it.t]}</span><span class="nm t-${it.t}${it.rare ? ' legend' : ''}">${esc(it.n)}</span><span class="ct">${right || (n > 1 ? `×${n}` : '')}</span></button>`; }
   bindRows() { for (const b of $('pbody').querySelectorAll('.row[data-id]')) b.onclick = () => { this.sel = b.dataset.id; this.drawPanel(); G.audio?.tick(); }; }
+  pTalent() {
+    const P = G.player, pts = P.talentPts;
+    const col = i => `<div class="col"><h3>${TREES[i]}</h3>${TALENTS.filter(t => t.tree === i).map(t => { const has = P.talents[t.id], can = P.canLearn(t.id); return `<button class="talent ${has ? 'have' : can ? 'can' : ''}" data-tl="${t.id}" ${has || !can ? 'disabled' : ''}><b>${esc(t.n)}</b><small>${esc(t.d)}</small></button>`; }).join('')}</div>`;
+    $('pbody').innerHTML = `<div class="talentWrap"><p class="talHead">Freie Talentpunkte: <b>${Math.max(0, pts)}</b> · Alle zwei Stufen gibt es einen Punkt.${Object.keys(P.talents).length ? ' <button id="talReset">Neu verteilen</button>' : ''}</p><div class="talCols">${[0, 1, 2].map(col).join('')}</div></div>`;
+    for (const b of $('pbody').querySelectorAll('[data-tl]')) b.onclick = () => { if (P.learn(b.dataset.tl)) this.drawPanel(); };
+    if ($('talReset')) $('talReset').onclick = () => { P.talents = {}; P.recalc(); G.audio?.tick(); this.drawPanel(); };
+  }
+  pFeat() {
+    const F = G.feats;
+    $('pbody').innerHTML = `<div class="featGrid">${FEATS.map(f => { const has = F.has(f), v = Math.min(f.need, F.value(f)); return `<div class="feat ${has ? 'have' : ''}"><b>${esc(f.n)}</b><small>${esc(f.d)}</small><span class="featBar"><i style="width:${v / f.need * 100}%"></i></span><em>${v} / ${f.need}</em></div>`; }).join('')}</div>`;
+  }
   pChar() {
     const P = G.player, st = (l, v) => `<div class="stat">${l}<b>${v}</b></div>`;
     const attr = (k, l, d) => `<div class="stat" style="align-items:center"><span>${l}<br><small style="color:var(--dim)">${d}</small></span><b>${P[k]} <button data-a="${k}" ${P.pts ? '' : 'disabled'}>+</button></b></div>`;
@@ -408,7 +420,7 @@ export class UI {
     $('oI').onchange = e => { s.invertY = e.target.checked; save(); };
     $('oK').onchange = e => { s.shake = e.target.checked; save(); };
   }
-  keysHtml() { if (Input.touch) return '<div class="keys"><b>Links wischen</b><span>Laufen, ganz drücken zum Rennen</span><b>Rechts wischen</b><span>Kamera</span><b>Schlag</b><span>Angriff, halten für Kombo</span><b>Block</b><span>Halten zum Blocken</span><b>Rolle</b><span>Ausweichen</span><b>Sprung</b><span>Springen</span><b>Ziel</b><span>Gegner fixieren</span><b>Elch</b><span>Reittier rufen, auf- und absitzen</span><b>Anzeige unten</b><span>Sprechen, öffnen, benutzen</span><b>Leiste unten</b><span>Zauber und Tränke</span><b>Minikarte</b><span>Weltkarte</span><b>Questtext</b><span>Quests</span><b>Menü</b><span>Inventar und alles andere</span></div>'; return `<div class="keys"><b>W A S D</b><span>Laufen</span><b>Maus</b><span>Kamera</span><b>Linksklick / X</b><span>Angriff (3er-Kombo)</span><b>Rechtsklick</b><span>Blocken</span><b>C</b><span>Ausweichrolle</span><b>Leertaste</b><span>Springen</span><b>Shift</b><span>Rennen: antippen oder halten</span><b>E</b><span>Interagieren</span><b>Q</b><span>Reittier rufen, auf- und absitzen</span><b>F</b><span>Ziel fixieren</span><b>1 bis 6</b><span>Zauber</span><b>R / T</b><span>Heil- / Manatrank</span><b>I</b><span>Inventar</span><b>K</b><span>Charakter</span><b>J</b><span>Quests</span><b>M</b><span>Weltkarte</span>${G.net?.available ? '<b>P</b><span>Multiplayer und Team</span><b>Enter</b><span>Chat (zu zweit)</span>' : ''}<b>N</b><span>Ton aus / an</span><b>Esc</b><span>Menü</span></div>`; }
+  keysHtml() { if (Input.touch) return '<div class="keys"><b>Links wischen</b><span>Laufen, ganz drücken zum Rennen</span><b>Rechts wischen</b><span>Kamera</span><b>Schlag</b><span>Angriff, halten für Kombo</span><b>Block</b><span>Halten zum Blocken</span><b>Rolle</b><span>Ausweichen</span><b>Sprung</b><span>Springen</span><b>Ziel</b><span>Gegner fixieren</span><b>Elch</b><span>Reittier rufen, auf- und absitzen</span><b>Anzeige unten</b><span>Sprechen, öffnen, benutzen</span><b>Leiste unten</b><span>Zauber und Tränke</span><b>Minikarte</b><span>Weltkarte</span><b>Questtext</b><span>Quests</span><b>Menü</b><span>Inventar und alles andere</span></div>'; return `<div class="keys"><b>Rechtsklick genau beim Treffer</b><span>Parieren, bricht die Haltung</span><b>C genau beim Treffer</b><span>Perfektes Ausweichen, lädt Konter auf</span><b>G oder Linksklick halten</b><span>Wuchtschlag aufladen</span><b>Angriff auf taumelnden Gegner</b><span>Todesstoß</span><b>O</b><span>Fotomodus</span><b>W A S D</b><span>Laufen</span><b>Maus</b><span>Kamera</span><b>Linksklick / X</b><span>Angriff (3er-Kombo)</span><b>Rechtsklick</b><span>Blocken</span><b>C</b><span>Ausweichrolle</span><b>Leertaste</b><span>Springen</span><b>Shift</b><span>Rennen: antippen oder halten</span><b>E</b><span>Interagieren</span><b>Q</b><span>Reittier rufen, auf- und absitzen</span><b>F</b><span>Ziel fixieren</span><b>1 bis 6</b><span>Zauber</span><b>R / T</b><span>Heil- / Manatrank</span><b>I</b><span>Inventar</span><b>K</b><span>Charakter</span><b>J</b><span>Quests</span><b>M</b><span>Weltkarte</span>${G.net?.available ? '<b>P</b><span>Multiplayer und Team</span><b>Enter</b><span>Chat (zu zweit)</span>' : ''}<b>N</b><span>Ton aus / an</span><b>Esc</b><span>Menü</span></div>`; }
   pSys() {
     const slots = [1, 2, 3].map(i => { const m = G.game.slotInfo(i); return `<div class="stat" style="align-items:center"><span>Spielstand ${i}<br><small style="color:var(--dim)">${m ? esc(m) : 'leer'}</small></span><b><button data-s="${i}">Speichern</button> <button data-l="${i}" ${m ? '' : 'disabled'}>Laden</button></b></div>`; }).join('');
     const auto = G.game.slotInfo(0);
@@ -451,8 +463,9 @@ export class UI {
     if (hasSave) items.push(['Weiterspielen', () => G.game.load(0)]);
     items.push(['Neues Spiel', () => this.titlePane('<h2>Neues Spiel</h2><p>Möchtest du am Anfang kurz die Steuerung lernen? Das dauert etwa zwei Minuten.</p><div class="acts"><button id="ngT">Mit Tutorial</button><button id="ngN">Ohne Tutorial</button></div>', () => { $('ngT').onclick = () => { $('titlePane').style.display = 'none'; G.game.newGame(true); }; $('ngN').onclick = () => { $('titlePane').style.display = 'none'; G.game.newGame(false); }; })]);
     if (G.net?.available) items.push(['Mit Freund spielen', () => { if (hasSave) G.game.load(0); else G.game.newGame(); G.net.host(); G.ui.toast(Input.touch ? 'Raum wird geöffnet. Den Link findest du im Menü.' : 'Raum wird geöffnet. Drück P für den Link.', 'quest'); }]);
+    if (G.net?.available) items.push(['Raum beitreten', () => G.netui.joinPane('')]);
     if ([1, 2, 3].some(i => G.game.slotInfo(i))) items.push(['Spielstand laden', () => this.titleLoad()]);
-    items.push(['Einstellungen', () => this.titleSettings()], ['Steuerung', () => this.titlePane(`<h2>Steuerung</h2>${this.keysHtml()}`)], ['Über das Spiel', () => this.titlePane(`<h2>Die Letzte Laterne</h2><p>Ein eigenes Dark-Fantasy-Open-World-RPG, inspiriert von der Stimmung früher 3D-Spiele. Musik und Sounds werden live im Browser erzeugt.</p><p style="color:var(--dim)">Three.js (MIT). Fotoscans von Poly Haven, Figuren und Animationen von Quaternius, alle CC0.</p><p style="color:var(--dim)">Profile und Spielstände bleiben in deinem Browser. Das Spiel schickt sie an keinen Server.</p>`)]);
+    items.push(['Einstellungen', () => this.titleSettings()], ['Steuerung', () => this.titlePane(`<h2>Steuerung</h2>${this.keysHtml()}`)], ['Über das Spiel', () => this.titlePane(`<h2>Die Letzte Laterne</h2><p>Ein eigenes Dark-Fantasy-Open-World-RPG, inspiriert von der Stimmung früher 3D-Spiele. Musik und Sounds werden live im Browser erzeugt.</p><p style="color:var(--dim)">Three.js und PeerJS (MIT). Fotoscans von Poly Haven, Figuren und Animationen von Quaternius (CC0). Goblin und Dämon aus dem Bestiary von Quaternius (Quaternius Asset License).</p><p style="color:var(--dim)">Profile und Spielstände bleiben in deinem Browser. Das Spiel schickt sie an keinen Server. Nur im Multiplayer verbinden sich zwei Browser über einen öffentlichen Vermittler.</p>`)]);
     if (G.net?.isInvited) items.length = 0;
     else if (G.profiles?.cur) items.splice(items.findIndex(x => x[0] === 'Einstellungen'), 0, ['Profil wechseln', () => G.profileUI.pick()]);
     const box = $('menuBtns'); box.innerHTML = ''; box.style.display = '';

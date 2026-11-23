@@ -1,6 +1,11 @@
 import * as THREE from '../vendor/three.module.js';
 import { G } from './game/state.js';
 import { Retro, GFX, Kit, loadPBR } from './core/gfx.js';
+import { VFX } from './game/vfx.js';
+import { Weather } from './world/weather.js';
+import { Photo } from './game/photo.js';
+import { Feats } from './game/feats.js';
+import { TALENT } from './data/extras.js';
 import { HUMAN, loadCharacters } from './actors/skinned.js';
 import { makeModel, setFlash } from './actors/models.js';
 import { loadMonsters } from './actors/monsters.js';
@@ -34,6 +39,7 @@ import { QUESTS } from './data/quests.js';
 import { ITEMS } from './data/items.js';
 import { nextFrame } from './core/util.js';
 
+const goodTalents = t => Object.fromEntries(Object.keys(t || {}).filter(id => TALENT[id]).map(id => [id, 1]));
 const outdoorFog = () => (G.settings.low ? .0056 : .0021);
 const SAVE = i => G.profiles.key(i);
 const SETTINGS = 'letzte-laterne-settings';
@@ -57,7 +63,7 @@ const game = G.game = {
     const P = G.player, w = G.inDungeon ? G.worldPos : P;
     return {
       v: 1, when: Date.now(), hour: G.hour, day: G.day, t: G.t, flags: G.flags, discovered: G.discovered, opened: G.opened, shards: G.shards, tablets: G.tablets, killed: G.killed, bossDead: G.bossDead, seen: G.seen, stats: G.stats, fog: G.ui.fogOut(), quests: G.quests.toJSON(),
-      p: { x: w.x, z: w.z, yaw: P.yaw, camYaw: P.camYaw, level: P.level, xp: P.xp, pts: P.pts, kraft: P.kraft, geist: P.geist, ausdauer: P.ausdauer, hp: P.hp, mp: P.mp, gold: P.gold, inv: P.inv, equip: P.equip, spells: P.spells, lastShrine: P.lastShrine, flame: P.flame },
+      p: { x: w.x, z: w.z, yaw: P.yaw, camYaw: P.camYaw, level: P.level, xp: P.xp, pts: P.pts, kraft: P.kraft, geist: P.geist, ausdauer: P.ausdauer, hp: P.hp, mp: P.mp, gold: P.gold, inv: P.inv, equip: P.equip, spells: P.spells, lastShrine: P.lastShrine, flame: P.flame, talents: P.talents },
     };
   },
   save(i) {
@@ -73,6 +79,7 @@ const game = G.game = {
   resetWorld() {
     G.tutorial?.stop(); G.explore?.reset();
     G.mount.reset();
+    G.vfx?.clear(); G.weather?.reset(); G.slowT = 0;
     G.fx.clear(); G.enemies.clear(); G.interact.clearAllPickups(); G.interact.clearDungeon();
     if (G.inDungeon) { G.dungeon.leave(); G.inDungeon = null; G.worldGroup.visible = true; G.scene.background = null; G.scene.fog.density = outdoorFog(); }
     G.enemies.camps = {};
@@ -103,7 +110,7 @@ const game = G.game = {
     G.hour = d.hour; G.day = d.day; G.t = d.t || 0;
     G.ui.fogIn(d.fog);
     const P = G.player; P.reset();
-    Object.assign(P, { level: d.p.level, xp: d.p.xp, pts: d.p.pts, kraft: d.p.kraft, geist: d.p.geist, ausdauer: d.p.ausdauer, gold: d.p.gold, inv: d.p.inv, equip: d.p.equip, spells: d.p.spells, lastShrine: d.p.lastShrine, flame: d.p.flame ?? null, yaw: d.p.yaw, camYaw: d.p.camYaw, dead: false });
+    Object.assign(P, { level: d.p.level, xp: d.p.xp, pts: d.p.pts, kraft: d.p.kraft, geist: d.p.geist, ausdauer: d.p.ausdauer, gold: d.p.gold, inv: d.p.inv, equip: d.p.equip, spells: d.p.spells, lastShrine: d.p.lastShrine, flame: d.p.flame ?? null, talents: goodTalents(d.p.talents), yaw: d.p.yaw, camYaw: d.p.camYaw, dead: false });
     P.recalc(); P.hp = Math.max(1, Math.min(d.p.hp, P.maxHp)); P.mp = Math.min(d.p.mp, P.maxMp); P.st = P.maxSt; P.rebuild();
     P.place(d.p.x, d.p.z);
     G.quests.load(d.quests);
@@ -116,7 +123,7 @@ const game = G.game = {
   },
   guestSave() {
     const P = G.player;
-    return { v: 1, when: Date.now(), discovered: G.discovered, opened: G.opened, shards: G.shards, tablets: G.tablets, killed: G.killed, seen: G.seen, stats: G.stats, fog: G.ui.fogOut(), borke: G.flags.borke || 0, p: { level: P.level, xp: P.xp, pts: P.pts, kraft: P.kraft, geist: P.geist, ausdauer: P.ausdauer, hp: P.hp, mp: P.mp, gold: P.gold, inv: P.inv, equip: P.equip, spells: P.spells, lastShrine: P.lastShrine, flame: P.flame } };
+    return { v: 1, when: Date.now(), discovered: G.discovered, opened: G.opened, shards: G.shards, tablets: G.tablets, killed: G.killed, seen: G.seen, stats: G.stats, fog: G.ui.fogOut(), borke: G.flags.borke || 0, p: { level: P.level, xp: P.xp, pts: P.pts, kraft: P.kraft, geist: P.geist, ausdauer: P.ausdauer, hp: P.hp, mp: P.mp, gold: P.gold, inv: P.inv, equip: P.equip, spells: P.spells, lastShrine: P.lastShrine, flame: P.flame, talents: P.talents } };
   },
   /** Der Mitspieler betritt die Welt des Gastgebers mit seiner eigenen Figur. */
   startGuest(save, w) {
@@ -126,7 +133,7 @@ const game = G.game = {
     if (s && ITEMS[s.equip?.weapon] && ITEMS[s.equip?.armor]) {
       for (const k of ['discovered', 'opened', 'shards', 'tablets', 'killed', 'seen']) if (save[k] && typeof save[k] === 'object') G[k] = save[k];
       if (save.stats) G.stats = save.stats;
-      Object.assign(P, { level: s.level, xp: s.xp, pts: s.pts, kraft: s.kraft, geist: s.geist, ausdauer: s.ausdauer, gold: s.gold, inv: s.inv, equip: s.equip, spells: s.spells, lastShrine: POI[s.lastShrine] ? s.lastShrine : 's_hutdorf', flame: s.flame ?? null });
+      Object.assign(P, { level: s.level, xp: s.xp, pts: s.pts, kraft: s.kraft, geist: s.geist, ausdauer: s.ausdauer, gold: s.gold, inv: s.inv, equip: s.equip, spells: s.spells, lastShrine: POI[s.lastShrine] ? s.lastShrine : 's_hutdorf', flame: s.flame ?? null, talents: goodTalents(s.talents) });
       if (save.fog) G.ui.fogIn(save.fog);
     }
     P.recalc(); P.hp = s ? Math.max(1, Math.min(s.hp, P.maxHp)) : P.maxHp; P.mp = s ? Math.min(s.mp, P.maxMp) : P.maxMp; P.st = P.maxSt; P.dead = false; P.rebuild();
@@ -145,6 +152,7 @@ const game = G.game = {
     if (G.net?.role) G.net.leave();
     G.tutorial?.stop(); G.explore?.reset();
     G.mount.reset();
+    G.vfx?.clear(); G.weather?.reset(); G.slowT = 0;
     G.fx.clear(); G.enemies.clear();
     if (G.inDungeon) { G.dungeon.leave(); G.interact.clearDungeon(); G.inDungeon = null; G.worldGroup.visible = true; G.scene.background = null; G.scene.fog.density = outdoorFog(); }
     G.mode = 'menu'; Input.unlock();
@@ -287,6 +295,11 @@ async function boot() {
   if (G.settings.low) game.applyQuality();
   G.dungeon = new Dungeon(G.scene);
   G.fx = new FX(G.scene);
+  G.vfx = new VFX(G.scene);
+  G.weather = new Weather(G.scene);
+  G.feats = new Feats();
+  G.photo = new Photo();
+  G.slowmo = (t, k) => { if (G.net?.active) return; G.slowT = Math.max(G.slowT || 0, t); G.slowK = k; };
   G.audio = new Audio2(G.settings);
   G.seen = {};
   G.ui.loading(.9, 'Die Bewohner erwachen'); await nextFrame();
@@ -316,7 +329,7 @@ async function boot() {
   G.ui.doneLoading();
   G.mode = 'menu';
   G.ui.title(true, !!store.get(SAVE(0)));
-  if (G.net.available && (G.net.isInvited || G.netui.invite())) G.netui.joinPane();
+  if (G.net.available && G.netui.invite()) { if (!G.test && !G.profiles.autoLogin()) G.profiles.guest(); G.game.refreshTitle(); G.netui.joinPane(); }
   else if (!G.test) G.profileUI.gate();
   if (G.test) window.__ll = { G, Input, game, QUESTS, POI, POIS, frame: step };
   last = performance.now();
@@ -344,11 +357,12 @@ const skyTarget = new THREE.Vector3();
 function step(rawDt) {
   let dt = rawDt;
   if (G.hitstop > 0) { G.hitstop -= rawDt; dt = rawDt * .15; }
+  if (G.slowT > 0) { G.slowT -= rawDt; dt = Math.min(dt, rawDt * G.slowK); }
   G.dt = dt;
   G.touch.update(); G.touch.perf(rawDt);
   const mode = G.mode, cam = G.camera, P = G.player;
   const live = !!G.net?.active;
-  if (mode !== 'panel' || live) G.t += dt;
+  if ((mode !== 'panel' && mode !== 'photo') || live) G.t += dt;
   if (mode === 'menu') {
     G.hour = 21.4;
     const a = G.t * .045, r = 86;
@@ -389,13 +403,16 @@ function step(rawDt) {
     else if (Input.hit('KeyM')) G.ui.openPanel('map');
     else if (Input.hit('Escape')) G.ui.openPanel('sys');
     else if (Input.hit('KeyP') && G.net.available) G.ui.openPanel('party');
+    else if (Input.hit('KeyO')) G.photo.toggle();
     else if (Input.hit('Enter') && G.net.active) G.netui.openChat();
-    if (G.net.duel?.state === 'incoming') { if (Input.hit('KeyB')) G.net.answerDuel(true); else if (Input.hit('KeyV')) G.net.answerDuel(false); }
+    if (G.net.joinAsk) { if (Input.hit('KeyB')) G.net.joinAsk(true); else if (Input.hit('KeyV')) G.net.joinAsk(false); }
+    else if (G.net.duel?.state === 'incoming') { if (Input.hit('KeyB')) G.net.answerDuel(true); else if (Input.hit('KeyV')) G.net.answerDuel(false); }
     if (Input.hit('KeyN')) G.ui.toast(G.audio.toggleMute() ? 'Ton aus' : 'Ton an', 'quest');
   } else if (mode === 'panel') G.ui.panelKeys();
+  else if (mode === 'photo') G.photo.update(rawDt);
   else if (mode === 'dead' && Input.hit('Enter') && document.getElementById('dead').style.display === 'flex') game.respawn();
 
-  if ((G.mode !== 'panel' || live) && G.mode !== 'menu') {
+  if ((G.mode !== 'panel' || live) && G.mode !== 'menu' && G.mode !== 'photo') {
     P.update(dt);
     G.mount.update(dt);
     if (G.mode === 'play' || G.mode === 'dialog' || G.mode === 'dead') P.updateCamera(cam, dt);
@@ -403,6 +420,7 @@ function step(rawDt) {
     G.npcs.update(dt);
     G.interact.update(dt);
     G.fx.update(dt);
+    G.vfx.update(dt);
     if (G.cut.active) G.cut.update(dt, cam);
   }
   const f = G.mode === 'menu' ? { x: 0, z: 180 } : (G.focus || P);
@@ -412,6 +430,8 @@ function step(rawDt) {
   G.skySnap = false;
   if (G.house) { G.sky.hemi.intensity = 2.5; G.sky.hemi.color.set(0xffe0c0); G.sky.hemi.groundColor.set(0x6a4a3a); G.sky.dir.intensity = .55; G.sky.dir.color.set(0xffd8b0); G.sky.dir.position.set(G.player.x + 60, 160, G.player.z + 90); G.sky.dir.target.position.set(G.player.x, 0, G.player.z); }
   else if (G.inDungeon) { G.sky.hemi.intensity = 1.5; G.sky.hemi.color.set(0xb8b8e8); G.sky.dir.intensity = .9; }
+  G.weather.update(G.mode === 'photo' ? 0 : rawDt, cam, regionAt(f.x, f.z));
+  G.feats.update(rawDt);
   G.net.update(rawDt);
   G.explore.update(dt); G.tutorial.update(rawDt);
   G.audio.setScene(musicScene());
@@ -420,6 +440,7 @@ function step(rawDt) {
   G.retro.u.fade.value = Math.max(0, G.retro.u.fade.value - rawDt * 1.3);
   if (!G.test) G.retro.adapt(rawDt * 1000);
   G.retro.render(G.scene, cam);
+  if (G.photo.want) G.photo.capture(document.getElementById('c'));
   Input.endFrame();
 }
 

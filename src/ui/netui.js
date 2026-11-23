@@ -3,6 +3,7 @@ import { G } from '../game/state.js';
 import { Input } from '../core/input.js';
 import { ITEMS } from '../data/items.js';
 import { POI } from '../data/world.js';
+import { cleanName } from '../game/p2p.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -53,17 +54,24 @@ export class NetUI {
     $('askY').onclick = () => G.net.answerDuel(true); $('askN').onclick = () => G.net.answerDuel(false);
   }
 
+  askPlayer(text) {
+    const a = $('netAsk');
+    a.style.display = 'block';
+    a.innerHTML = `<b>${esc(text)}</b><div class="acts" style="justify-content:center"><button id="askY">Reinlassen (B)</button><button id="askN">Ablehnen (V)</button></div>`;
+    $('askY').onclick = () => G.net.joinAsk?.(true); $('askN').onclick = () => G.net.joinAsk?.(false);
+  }
+
   // ── Teammenü ──
   panel(el) {
     const N = G.net, P = G.player;
     if (!N.role) {
-      el.innerHTML = `<div class="col"><h2>Mit Freund spielen</h2><p>Öffne einen Raum. Du bekommst einen Link, den du deinem Freund schickst. Ihr spielt dann gemeinsam in deiner Welt.</p>${N.error ? `<p class="neterr">${esc(N.error)}</p>` : ''}<div class="acts"><button id="nOpen">Raum öffnen</button></div></div><div class="col narrow"><h3>So läuft es</h3><p style="color:var(--dim)">Dein PC ist der Gastgeber und muss anbleiben. Der Link gilt nur, solange der Raum offen ist, und ändert sich bei jedem Öffnen.</p></div>`;
+      el.innerHTML = `<div class="col"><h2>Mit Freund spielen</h2><p>Öffne einen Raum. Du bekommst einen Link, den du deinem Freund schickst. Ihr spielt dann gemeinsam in deiner Welt, ohne Konto und ohne Download.</p>${N.error ? `<p class="neterr">${esc(N.error)}</p>` : ''}<div class="acts"><button id="nOpen">Raum öffnen</button></div></div><div class="col narrow"><h3>So läuft es</h3><p style="color:var(--dim)">Dein Browser ist der Gastgeber und muss offen bleiben. Du entscheidest, wer hereinkommt.</p><p style="color:var(--dim)">Ein öffentlicher Dienst (PeerJS) stellt den Kontakt her, danach verbinden sich eure Browser meist direkt. Dabei sieht der andere deine IP-Adresse. Teile den Link nur mit Leuten, die du kennst.</p></div>`;
       $('nOpen').onclick = () => { G.audio?.tick(); N.host(); };
       return;
     }
     if (N.isHost && !N.active) {
       const R = N.room || {}, link = N.inviteLink();
-      el.innerHTML = `<div class="col"><h2>Warte auf deinen Freund</h2>${R.state !== 'open' ? '<p>Der Internet-Link wird erstellt. Das dauert ein paar Sekunden.</p>' : link ? `<p>Schick deinem Freund diesen Link:</p><input id="nLink" class="netfield" readonly value="${esc(link)}"><div class="acts"><button id="nCopy">Link kopieren</button></div><p style="color:var(--dim)">Teile ihn nur mit Leuten, die mitspielen sollen.</p>` : `<p class="neterr">${esc(N.error || 'Der Internet-Link fehlt.')}</p><p>Meist blockiert das aktuelle Netzwerk den Link, zum Beispiel in Schulen. Probier es in einem anderen WLAN, etwa zu Hause.</p><div class="acts"><button id="nRetry">Nochmal versuchen</button></div>`}<div class="acts"><button id="nClose">Raum schließen</button></div></div><div class="col narrow"><h3>Raumcode</h3><p class="netcode">${esc(R.code || '······')}</p></div>`;
+      el.innerHTML = `<div class="col"><h2>Warte auf deinen Freund</h2>${R.state !== 'open' ? '<p>Der Raum wird geöffnet. Das dauert ein paar Sekunden.</p>' : link ? `<p>Schick deinem Freund diesen Link:</p><input id="nLink" class="netfield" readonly value="${esc(link)}"><div class="acts"><button id="nCopy">Link kopieren</button></div><p style="color:var(--dim)">Teile ihn nur mit Leuten, die mitspielen sollen.</p>` : `<p class="neterr">${esc(N.error || 'Der Raum konnte nicht geöffnet werden.')}</p><p>Manche Netzwerke, zum Beispiel in Schulen, blockieren das. Probier es in einem anderen WLAN, etwa zu Hause.</p><div class="acts"><button id="nRetry">Nochmal versuchen</button></div>`}<div class="acts"><button id="nClose">Raum schließen</button></div></div><div class="col narrow"><h3>Raumcode</h3><p class="netcode">${esc(R.code || '······')}</p></div>`;
       if ($('nCopy')) $('nCopy').onclick = async () => { const f = $('nLink'); try { await navigator.clipboard.writeText(link); } catch { f.select(); document.execCommand('copy'); } $('nCopy').textContent = 'Kopiert'; G.audio?.tick(); };
       if ($('nRetry')) $('nRetry').onclick = () => { N.error = ''; N.room = { state: 'opening' }; N.send({ t: 'open' }); G.ui.drawPanel(); };
       $('nClose').onclick = () => { N.leave(); G.ui.drawPanel(); };
@@ -88,9 +96,9 @@ export class NetUI {
     G.net.lastCode = code;
     let saved = '';
     try { saved = localStorage.getItem('letzte-laterne-name') || (G.profiles?.cur?.guest ? '' : G.profiles?.cur?.name) || ''; } catch { /* optional */ }
-    G.ui.titlePane(`<h2>Spiel beitreten</h2><p style="color:var(--dim)">Deine Figur wird beim Gastgeber gespeichert. Nimm beim nächsten Mal denselben Namen.</p>${error ? `<p class="neterr">${esc(error)}</p>` : ''}<label class="netlabel">Dein Name<input id="jName" class="netfield" maxlength="16" value="${esc(saved)}" autocomplete="off"></label><label class="netlabel">Raumcode<input id="jCode" class="netfield" maxlength="10" value="${esc(code)}" autocomplete="off"></label><div class="acts"><button id="jGo">Beitreten</button></div>`);
+    G.ui.titlePane(`<h2>Spiel beitreten</h2><p style="color:var(--dim)">Deine Figur bleibt in diesem Browser gespeichert. Der Gastgeber muss dich hereinlassen. Tritt nur Räumen von Leuten bei, die du kennst.</p>${error ? `<p class="neterr">${esc(error)}</p>` : ''}<label class="netlabel">Dein Name<input id="jName" class="netfield" maxlength="16" value="${esc(saved)}" autocomplete="off"></label><label class="netlabel">Raumcode<input id="jCode" class="netfield" maxlength="10" value="${esc(code)}" autocomplete="off"></label><div class="acts"><button id="jGo">Beitreten</button></div>`);
     const go = () => {
-      const name = $('jName').value.trim(), c = $('jCode').value.trim().toUpperCase();
+      const name = cleanName($('jName').value), c = $('jCode').value.trim().toUpperCase();
       if (!name || !c) { G.audio?.deny?.(); return; }
       try { localStorage.setItem('letzte-laterne-name', name); } catch { /* optional */ }
       G.net.lastCode = c; G.audio.init(); $('jGo').textContent = 'Verbinde …'; $('jGo').disabled = true;

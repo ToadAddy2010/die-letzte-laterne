@@ -9,9 +9,9 @@ W A S D und Maus zum Laufen und Umsehen, Linksklick oder X zum Angreifen, Rechts
 C zum Rollen, Leertaste zum Springen, Shift zum Rennen, E zum Benutzen, Q für das Reittier.
 Auf Handy und Tablet erscheint automatisch eine Touch-Steuerung.
 
-Spielstände bleiben nur im eigenen Browser gespeichert.
+Spielstände bleiben nur im eigenen Browser gespeichert. Für den Multiplayer verbinden sich zwei Browser über einen öffentlichen PeerJS-Vermittler, ohne Konto. Dabei sieht der Mitspieler die IP-Adresse.
 
 ## Lizenzen
 
-Three.js steht unter der MIT-Lizenz, die Schriften Pixelify Sans und VT323 unter der SIL Open Font License.
+Three.js und PeerJS stehen unter der MIT-Lizenz, die Schriften Pixelify Sans und VT323 unter der SIL Open Font License.
 Die Lizenztexte liegen im Ordner `vendor`. Fotoscans, Figuren und Animationen stehen unter CC0. Die Goblin- und Dämonenmodelle in `assets/chars/monsters` stammen von Quaternius, stehen unter der Quaternius Asset License und dürfen nicht als eigene Assets entnommen oder weitergegeben werden. Alle Quellen stehen in `assets/CREDITS.md`.

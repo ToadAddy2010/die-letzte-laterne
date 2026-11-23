@@ -3,6 +3,7 @@ import { makeModel, animate, setFlash } from './models.js';
 import { ENEMIES, BOSSES, PACKS, ROAM, WORLD_BOSSES } from '../data/enemies.js';
 import { POIS, POI, REGIONS } from '../data/world.js';
 import { ITEMS } from '../data/items.js';
+import { ELITES, ELITE_IDS, LEGENDS } from '../data/extras.js';
 import { angDiff, clamp, damp, RNG, TAU } from '../core/util.js';
 import { resolve } from '../world/collision.js';
 import { heightAt, regionAt, blockedAt } from '../world/terrain.js';
@@ -29,6 +30,12 @@ class Enemy {
     this.yaw = Math.random() * TAU; this.state = 'idle'; this.t = Math.random() * 2; this.anim = Math.random() * 9; this.atk = -1; this.cool = 1 + Math.random(); this.wanderX = x; this.wanderZ = z;
     this.vx = 0; this.vz = 0; this.slow = 0; this.flash = 0; this.dead = false; this.deadT = 0; this.camp = o.camp || null; this.aggro = !!o.aggro; this.phase = 1; this.moveI = 0; this.moveT = 2.2; this.summoned = !!o.summoned;
     this.spd = d.spd * (.92 + Math.random() * .16);
+    this.pMax = bossDef ? 20 + d.lv * .6 : d.hp >= 200 ? 8 : 5; this.posture = 0; this.postT = 0; this.stun = 0; this.blinkT = 3 + Math.random() * 3;
+    const elite = !bossDef && d.ai !== 'dummy' ? ELITES[o.elite] : null;
+    if (elite) {
+      this.elite = o.elite; this.maxHp = this.hp = Math.round(this.maxHp * 2.4 * (elite.hp ?? 1)); this.dmg *= 1.3; this.spd *= elite.spd ?? 1; this.xp = Math.round(this.xp * 3); this.pMax *= 1.6 * (elite.post ?? 1);
+      this.model.inner.scale.multiplyScalar(1.2); this.model.height *= 1.2; this.title = `${d.n} ${elite.n}`;
+    }
     G.scene.add(this.model.root);
   }
   remove() { G.scene.remove(this.model.root); }
@@ -36,6 +43,7 @@ class Enemy {
     if (this.dead) return;
     if (this.boss && this.intro) return;
     dmg = Math.max(1, Math.round(dmg));
+    if (o.finish) this.stun = 0;
     if (G.net?.isGuest) {
       G.net.sendHit(this, dmg, o); this.flash = .1;
       G.ui.floatText(this.x, this.y + this.model.height + .3, this.z, `${dmg}`, o.crit ? 'crit' : o.spell ? 'spell' : 'dmg');
@@ -50,22 +58,35 @@ class Enemy {
     G.fx.burst(this.x, this.y + this.model.height * .55, this.z, this.bloodColor(), o.crit ? 16 : 8, 7, .2, .42);
     G.audio?.enemyHit();
     if (this.d.ai === 'dummy') { this.hp = this.maxHp; G.tutorial?.onHit(); return; }
-    if (this.hp <= 0) this.die();
-    else if (this.boss && this.phase === 1 && this.hp < this.maxHp * .5) {
-      this.phase = 2; this.spd *= 1.14; G.ui.toast(`${this.d.n} wird wütend!`, 'warn'); G.fx.ring(this.x, this.y, this.z, 12, this.d.bolt, 50); G.audio?.roar();
+    if (this.hp <= 0) { this.die(); return; }
+    if (!o.finish) this.addPosture(o.post ?? (o.spell ? .6 : 1));
+    if (this.boss && this.phase === 1 && this.hp < this.maxHp * .5) {
+      this.phase = 2; this.spd *= 1.14; G.ui.banner(this.d.n, 'Zweite Phase'); G.fx.ring(this.x, this.y, this.z, 12, this.d.bolt, 50); G.audio?.roar();
+      G.slowmo?.(.7, .28); G.vfx?.shock(this.x, this.y, this.z, 24, this.d.bolt ?? 0xff5a4a, .8); G.vfx?.shock(this.x, this.y, this.z, 14, 0xffffff, .5); G.player.shake(.7);
     }
+  }
+  addPosture(n) {
+    if (this.dead || !n || this.d.ai === 'dummy' || this.stun > 0 || this.treasure || this.intro) return;
+    this.posture += n; this.postT = 3.4;
+    if (this.posture < this.pMax) return;
+    this.posture = 0; this.stun = this.boss ? 3.4 : 2.4; this.action = null; this.shot = 0; this.atk = -1; if (!this.boss) { this.state = 'chase'; this.cool = 1; }
+    G.ui.floatText(this.x, this.y + this.model.height + .7, this.z, 'Taumelt!', 'crit');
+    G.vfx?.shock(this.x, this.y, this.z, 5 + this.rad * 2, 0xffe9a8, .44); G.audio?.block(); G.audio?.stone?.();
   }
   bloodColor() { const k = this.d.model.kind; return this.d.model.skull ? 0xe8e2cc : k === 'ghost' ? (this.d.model.c1 ?? 0x7ff2c8) : k === 'shroom' ? 0xff9ad8 : k === 'spider' ? 0xf0bd5a : k === 'imp' ? 0xff9a30 : this.d.model.noFace ? 0xf0bd5a : 0x8affb0; }
   die() {
     this.dead = true; this.state = 'dead'; this.deadT = 0; this.atk = -1;
     const P = G.player, d = this.d;
     P.addXp(this.xp); G.stats.kills++; G.killed[this.type] = (G.killed[this.type] || 0) + 1;
-    if (d.gold) P.addGold(Math.round(d.gold * (.7 + Math.random() * .6)), !this.boss);
+    if (d.gold) P.addGold(Math.round(d.gold * (.7 + Math.random() * .6)) * (this.elite ? 3 : 1), !this.boss);
+    if (this.elite) { G.feats?.bump('elites'); this.eliteDeath(P); }
+    if (!G.net?.isGuest) G.enemies.legend(this, this.elite ? .28 : this.boss ? .18 : .0025);
     if (this.boss) {
       G.bossDead[this.type] = 1;
       for (const id of d.loot || []) P.addItem(id);
       if (G.enemies.boss === this) G.enemies.boss = null;
       G.ui.bossBar(null); G.ui.banner(`${d.n} besiegt`, 'Großer Feind gefallen'); G.audio?.victory();
+      G.slowmo?.(1.5, .16); G.vfx?.shock(this.x, this.y, this.z, 30, d.bolt ?? 0xffd070, 1.1); G.vfx?.shock(this.x, this.y, this.z, 16, 0xffffff, .7); G.vfx?.pillar(this.x, this.y, this.z, d.bolt ?? 0xffd070, 7);
       G.fx.ring(this.x, this.y, this.z, 16, d.bolt, 70); G.fx.burst(this.x, this.y + 3, this.z, d.bolt, 90, 16, .4, 1.4);
       for (const e of G.enemies.list) if (e.summoned && !e.dead) e.hurt(1e6);
       G.net?.onEnemyDied(this);
@@ -78,6 +99,24 @@ class Enemy {
     if (!this.boss) G.net?.onEnemyDied(this);
     emit('kill', this.type);
     G.audio?.enemyDie();
+  }
+  eliteDeath(P) {
+    G.fx.burst(this.x, this.y + 1.6, this.z, ELITES[this.elite].c, 36, 9, .24, .8);
+    if (this.elite !== 'flamme') return;
+    const x = this.x, z = this.z, D = this.dmg * 1.1;
+    G.fx.tele(x, z, 5.6, .85, 0xff7a28, () => { G.fx.beam(x, groundY(x, z), z, 4.6, 0xff7a28, .3); G.vfx?.shock(x, groundY(x, z), z, 9, 0xff7a28, .5); G.audio?.boom(); if (Math.hypot(P.x - x, P.z - z) < 6.2) P.hurt(D, { x, z }); });
+  }
+  blink(P) {
+    const q = { x: P.x - Math.sin(P.yaw) * 3.4, z: P.z - Math.cos(P.yaw) * 3.4 };
+    if (G.inDungeon && G.dungeon.isWall(q.x, q.z)) return;
+    resolve(q, Math.min(this.rad, 1.6));
+    G.fx.burst(this.x, this.y + 1.5, this.z, 0x9a5aff, 20, 6, .22, .55); this.x = q.x; this.z = q.z; this.vx = this.vz = 0; this.yaw = Math.atan2(P.x - q.x, P.z - q.z);
+    G.fx.burst(this.x, groundY(q.x, q.z) + 1.5, this.z, 0x9a5aff, 20, 6, .22, .55); G.audio?.cast?.('blink'); this.state = 'wind'; this.t = (this.d.windup ?? .46) + .25; this.atk = 0;
+  }
+  aura(dt) {
+    if (!this.elite || Math.random() >= dt * 11) return;
+    const a = Math.random() * TAU, r = this.rad + .35;
+    G.fx.burst(this.x + Math.cos(a) * r, this.y + .25 + Math.random() * this.model.height * .6, this.z + Math.sin(a) * r, ELITES[this.elite].c, 1, 1, .16, .75, -2.6);
   }
   face(x, z, rate, dt) { this.yaw += angDiff(this.yaw, Math.atan2(x - this.x, z - this.z)) * Math.min(1, rate * dt); }
   move(x, z, sp, dt) {
@@ -97,7 +136,8 @@ class Enemy {
     const P = this.target ?? G.player, dx = P.x - this.x, dz = P.z - this.z, d = Math.hypot(dx, dz);
     if (d > (this.d.reach ?? 2.6) * reachMul + .75 || Math.abs(P.y - this.y) > 4 + this.model.height * .3) return;
     if (Math.acos(clamp((dx * Math.sin(this.yaw) + dz * Math.cos(this.yaw)) / (d || 1), -1, 1)) > arc) return;
-    P.hurt(this.dmg, this);
+    const landed = P.hurt(this.dmg, this, this.elite === 'frost' ? { slow: 1.7 } : {});
+    if (landed && this.elite === 'vampir' && !this.dead) { this.hp = Math.min(this.maxHp, this.hp + this.maxHp * .08); G.fx.burst(this.x, this.y + 1.8, this.z, 0xff3a4a, 12, 3, .2, .6, -3); }
   }
   update(dt) {
     this.anim += dt; this.slow = Math.max(0, this.slow - dt);
@@ -108,8 +148,20 @@ class Enemy {
       this.sync();
       return;
     }
+    this.aura(dt);
+    if (this.postT > 0) this.postT -= dt; else if (this.posture > 0) this.posture = Math.max(0, this.posture - this.pMax * .14 * dt);
+    if (this.stun > 0) {
+      this.stun -= dt; this.atk = -1; this.model.hitT = .24;
+      const k = Math.exp(-7 * dt); this.vx *= k; this.vz *= k; this.x += this.vx * dt; this.z += this.vz * dt;
+      resolve(this, Math.min(this.rad, 2.2)); this.y = groundY(this.x, this.z);
+      if (Math.random() < dt * 13) { const a = G.t * 6 + Math.random(); G.fx.burst(this.x + Math.cos(a) * .7, this.y + this.model.height + .25, this.z + Math.sin(a) * .7, 0xffe9a8, 1, 1.2, .15, .42, 0); }
+      animate(this.model, { t: this.anim, speed: 0, attack: -1 });
+      this.sync();
+      return;
+    }
     this.tx = 0; this.tz = 0;
     const P = this.target = G.net?.active ? G.net.targetFor(this) : G.player, dx = P.x - this.x, dz = P.z - this.z, dist = Math.hypot(dx, dz);
+    if (this.elite === 'schatten' && this.state === 'chase' && dist > 5 && dist < 28 && (P === G.player ? G.mode === 'play' && !P.dead : true)) { this.blinkT -= dt; if (this.blinkT <= 0) { this.blinkT = 4.6 + Math.random() * 3; this.blink(P); } }
     if (P === G.player ? G.mode === 'play' && !P.dead : true) { this.boss ? this.bossAI(dt, P, dist) : this.ai(dt, P, dist); }
     const k = 1 - Math.exp(-9 * dt);
     this.vx += (this.tx - this.vx) * k; this.vz += (this.tz - this.vz) * k;
@@ -126,6 +178,8 @@ class Enemy {
     this.anim += dt;
     if (this.flash > 0) { this.flash -= dt; setFlash(this.model, this.flash > 0); }
     if (this.dead) { this.deadT += dt; animate(this.model, { t: this.anim, speed: 0, attack: -1, dead: Math.min(1, this.deadT / 1.1) }); this.sync(); return; }
+    this.aura(dt);
+    if (this.stun > 0) { this.stun -= dt; this.model.hitT = .24; }
     const ox = this.x, oz = this.z;
     this.x = damp(this.x, this.nx ?? this.x, 11, dt); this.z = damp(this.z, this.nz ?? this.z, 11, dt);
     this.yaw += angDiff(this.yaw, this.nyaw ?? this.yaw) * Math.min(1, dt * 12);
@@ -219,6 +273,7 @@ class Enemy {
       if (dist < (d.reach ?? 4) + 2 && Math.random() < .36) m = list.includes('slash') ? 'slash' : list.includes('slam') ? 'slam' : m;
       if (m === 'summon' && G.enemies.list.filter(e => e.summoned && !e.dead).length >= 3) m = list[this.moveI++ % list.length];
       if (m === 'summon' && !d.summon) m = 'volley';
+      if (this.phase === 2 && Math.random() < .36) m = ['spiral', 'quake', 'meteor'][Math.floor(Math.random() * 3)];
       this.start(m, P);
     }
   }
@@ -282,6 +337,37 @@ class Enemy {
       }
       G.audio?.roar();
       this.action = dt => { T += dt; this.atk = .2; if (T > .9) end(1.8); };
+    } else if (m === 'spiral') {
+      let a = this.yaw, acc = 0;
+      G.audio?.roar();
+      this.action = dt => {
+        T += dt; this.atk = .28; this.yaw += dt * 1.6;
+        if (T > .45 && T < 2.3) { acc += dt; while (acc > .13) { acc -= .13; a += .58; for (const q of [0, Math.PI]) this.bolt(Math.sin(a + q), Math.cos(a + q), { dmg: D * .62, speed: 16, size: 1.05 }); G.audio?.enemyShot(); } }
+        if (T > 2.6) end(1.6);
+      };
+    } else if (m === 'quake') {
+      const l = Math.hypot(P.x - this.x, P.z - this.z) || 1, dx = (P.x - this.x) / l, dz = (P.z - this.z) / l, sx = this.x, sz = this.z, start = this.rad + 2.4;
+      for (let i = 0; i < 10; i++) {
+        const x = sx + dx * (start + i * 3.3), z = sz + dz * (start + i * 3.3);
+        if (G.inDungeon && G.dungeon.isWall(x, z)) break;
+        setTimeout(() => {
+          if (G.enemies.boss !== this || this.dead) return;
+          G.fx.tele(x, z, 2.9, .55, col, () => { G.fx.beam(x, groundY(x, z), z, 2.4, col, .2); G.vfx?.shock(x, groundY(x, z), z, 4.4, col, .3); if (i % 2 === 0) G.audio?.boom(); if (Math.hypot(P.x - x, P.z - z) < 3.3) P.hurt(D * .95, { x, z }); });
+        }, i * 85);
+      }
+      this.action = dt => { T += dt; this.atk = T < .4 ? T : Math.min(1, .4 + (T - .4)); if (T > 1.5) end(1.5); };
+    } else if (m === 'meteor') {
+      const n = rage ? 7 : 5;
+      G.audio?.roar();
+      for (let i = 0; i < n; i++) {
+        const a = i === 0 ? 0 : Math.random() * TAU, r = i === 0 ? 0 : 4 + Math.random() * 11, x = P.x + Math.cos(a) * r, z = P.z + Math.sin(a) * r;
+        if (G.inDungeon && G.dungeon.isWall(x, z)) continue;
+        setTimeout(() => {
+          if (G.enemies.boss !== this || this.dead) return;
+          G.fx.tele(x, z, 4.8, 1.15, col, () => { const y = groundY(x, z); G.fx.beam(x, y, z, 4.2, col, .32); G.vfx?.shock(x, y, z, 8, col, .46); G.fx.burst(x, y + 1, z, col, 22, 10, .28, .6); G.audio?.boom(); P.shake(.3); if (Math.hypot(P.x - x, P.z - z) < 5.3) P.hurt(D * 1.05, { x, z }); });
+        }, i * 210);
+      }
+      this.action = dt => { T += dt; this.atk = .28; if (T > 1.7) end(1.6); };
     }
   }
 }
@@ -291,9 +377,9 @@ export class Enemies {
   clear() { for (const e of this.list) { e.remove(); e.dead = true; } this.list = []; this.byId.clear(); this.boss = null; G.ui.bossBar(null); }
   /** Übernimmt den Gegnerstand des Gastgebers. Meldet zurück, wenn ein Gegner fehlt. */
   applySnapshot(m) {
-    for (const [id, type, maxHp, lv] of Array.isArray(m.n) ? m.n : []) {
+    for (const [id, type, maxHp, lv, elite] of Array.isArray(m.n) ? m.n : []) {
       if (this.byId.has(id) || !(BOSSES[type] || ENEMIES[type])) continue;
-      const e = new Enemy(type, 0, 0, { id, lv }); e.maxHp = maxHp; e.hp = maxHp; e.placed = false;
+      const e = new Enemy(type, 0, 0, { id, lv, elite: typeof elite === 'string' ? elite : undefined }); e.maxHp = maxHp; e.hp = maxHp; e.placed = false;
       this.list.push(e); this.byId.set(id, e);
     }
     const live = new Set(); let boss = null, missing = false;
@@ -302,7 +388,7 @@ export class Enemies {
       if (!e) { missing = true; continue; }
       live.add(id);
       if (!e.placed) { e.x = x; e.z = z; e.yaw = yaw; e.y = groundY(x, z); e.placed = true; }
-      e.nx = x; e.nz = z; e.nyaw = yaw; e.hp = hp; e.atk = atk; e.aggro = !!(fl & 8);
+      e.nx = x; e.nz = z; e.nyaw = yaw; e.hp = hp; e.atk = atk; e.aggro = !!(fl & 8); e.stun = fl & 16 ? .3 : 0;
       if (fl & 1 && !e.dead) { e.dead = true; e.deadT = 0; e.atk = -1; G.audio?.enemyDie(); }
       e.state = e.dead ? 'dead' : e.aggro ? 'chase' : 'idle';
       if (fl & 4) boss = e;
@@ -310,6 +396,16 @@ export class Enemies {
     for (let i = this.list.length - 1; i >= 0; i--) { const e = this.list[i]; if (!live.has(e.id)) { e.remove(); e.dead = true; this.byId.delete(e.id); this.list.splice(i, 1); } }
     if (boss !== this.boss) { this.boss = boss; G.ui.bossBar(boss); if (boss) { G.ui.banner(boss.d.n, boss.d.title); G.audio?.roar(); } }
     return missing;
+  }
+  eliteRoll(p) { if ((G.player?.level ?? 1) < 4) return undefined; return this.rng() < p * (G.bloodMoon ? 3.2 : 1) ? ELITE_IDS[Math.floor(this.rng() * ELITE_IDS.length)] : undefined; }
+  pickLegend(lv) { const P = G.player, top = 1.4 + lv / 2.7, pool = LEGENDS.filter(id => ITEMS[id].tier <= top && !P.inv[id] && !P.isEquipped(id)); return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null; }
+  legend(e, chance) {
+    if (Math.random() >= chance) return null;
+    const id = this.pickLegend(e.lv); if (!id) return null;
+    G.player.addItem(id, 1, true); G.feats?.bump('legends');
+    G.ui.banner('Legendäre Beute', ITEMS[id].n); G.audio?.victory();
+    G.vfx?.pillar(e.x, e.y, e.z, 0xffb43a, 9); G.fx.burst(e.x, e.y + 1.6, e.z, 0xffd070, 46, 10, .26, 1.1);
+    return id;
   }
   spawn(type, x, z, o) { const e = new Enemy(type, x, z, o); this.list.push(e); return e; }
   removeEnemy(e) { const i = this.list.indexOf(e); if (i >= 0) this.list.splice(i, 1); e.dead = true; e.remove(); if (G.player.lock === e) G.player.lock = null; }
@@ -337,7 +433,7 @@ export class Enemies {
   enterDungeon(a) {
     this.clear();
     const lv = a.poi.lvl;
-    for (const s of a.spawns) this.spawn(s.type, s.x, s.z, { lv });
+    for (const s of a.spawns) this.spawn(s.type, s.x, s.z, { lv, elite: this.eliteRoll(.07) });
     if (!G.bossDead[a.poi.boss]) { const b = this.spawn(a.poi.boss, a.boss.x, a.boss.z); b.yaw = 0; }
   }
   updateWorld(P) {
@@ -352,7 +448,7 @@ export class Enemies {
         if (!st.spawned && G.t >= st.next) {
           st.spawned = true; st.live = 0;
           const pack = PACKS[c.pack], reg = regionAt(c.x, c.z);
-          for (let i = 0; i < c.n; i++) { const a = i / c.n * TAU + .4, r = 9 + (i % 3) * 3; this.spawn(pack[i % pack.length], c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, { camp: c.id, lv: reg.lvl }); st.live++; }
+          for (let i = 0; i < c.n; i++) { const a = i / c.n * TAU + .4, r = 9 + (i % 3) * 3; this.spawn(pack[i % pack.length], c.x + Math.cos(a) * r, c.z + Math.sin(a) * r, { camp: c.id, lv: reg.lvl, elite: i === 0 ? this.eliteRoll(.22) : undefined }); st.live++; }
         }
       } else if (d > 260 && st.spawned && st.live <= 0) { st.spawned = false; st.next = Math.min(st.next, G.t); }
     }
@@ -369,7 +465,7 @@ export class Enemies {
         if (Math.abs(x) > 1520 || Math.abs(z) > 1520 || heightAt(x, z) < .9 || inTown(x, z, 18) || blockedAt(x, z)) continue;
         if (regionAt(x, z) !== reg) continue;
         const type = list[Math.floor(this.rng() * list.length)], pack = ENEMIES[type].lv >= 8 ? 1 : (this.rng() < .45 ? 2 : 1);
-        for (let n = 0; n < pack; n++) this.spawn(type, x + n * 3.2, z + n * 2.2, { lv: reg.lvl });
+        for (let n = 0; n < pack; n++) this.spawn(type, x + n * 3.2, z + n * 2.2, { lv: reg.lvl, elite: n === 0 ? this.eliteRoll(.09) : undefined });
         break;
       }
     }

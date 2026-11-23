@@ -304,3 +304,19 @@ body.touch #cutHint { pointer-events: auto; padding: 6px 10px; background: #0505
 .pfNote { color: var(--dim); font-size: 15px; line-height: 1.3; margin: 8px 0; }
 .pfErr { color: var(--red); font-size: 16px; min-height: 18px; margin: 4px 0; }
 #titlePane { background: var(--panel); border: 2px solid var(--gold2); }
+
+/* Elite-Monster, Haltung, Talente, Erfolge, Fotomodus */
+.ehp u { position: absolute; left: 0; bottom: -4px; height: 3px; max-width: 100%; background: #ffd24a; display: block; text-decoration: none; }
+.ehp.stun u { background: #fff; box-shadow: 0 0 6px #ffd24a; }
+.ehp.elite { height: 8px; border-color: #ffb43a; box-shadow: 0 0 6px rgba(255, 180, 58, .7); }
+.ehp.elite::before { content: attr(data-n); position: absolute; left: 50%; bottom: 11px; transform: translateX(-50%); white-space: nowrap; color: #ffcf70; font-size: 15px; text-shadow: 1px 1px 0 #000, 0 0 5px #000; }
+#bossP { height: 4px; margin: 3px auto 0; width: 62%; background: rgba(0, 0, 0, .7); } #bossP i { display: block; height: 100%; width: 0; background: #ffd24a; } #bossP.stun i { background: #fff; box-shadow: 0 0 8px #ffd24a; }
+.legend { color: #ffb43a !important; text-shadow: 0 0 8px rgba(255, 170, 40, .55); }
+.talentWrap { width: 100%; display: flex; flex-direction: column; min-height: 0; } .talHead { margin: 2px 0 8px; } .talHead button { margin-left: 8px; }
+.talCols { display: flex; gap: 12px; flex: 1; min-height: 0; overflow: auto; } .talCols .col { flex: 1; min-width: 0; }
+button.talent { display: block; width: 100%; text-align: left; margin-bottom: 7px; padding: 7px 9px; opacity: .55; } button.talent b { display: block; } button.talent small { display: block; color: var(--dim); font-size: 16px; line-height: 1.15; white-space: normal; }
+button.talent.can { opacity: 1; border-color: var(--gold); box-shadow: 0 0 7px rgba(255, 200, 90, .3); } button.talent.have { opacity: 1; background: rgba(255, 190, 80, .2); border-color: #ffb43a; }
+.featGrid { width: 100%; display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 7px; overflow: auto; align-content: start; }
+.feat { padding: 6px 8px; border: 1px solid #3c3a78; opacity: .62; } .feat.have { opacity: 1; border-color: #ffb43a; background: rgba(255, 190, 80, .12); } .feat b { display: block; } .feat small { display: block; color: var(--dim); font-size: 15px; line-height: 1.1; min-height: 16px; }
+.featBar { display: block; height: 4px; margin-top: 4px; background: #000; } .featBar i { display: block; height: 100%; background: var(--gold); } .feat em { font-style: normal; font-size: 14px; color: var(--dim); }
+#photoHint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; padding: 5px 12px; background: rgba(0, 0, 0, .62); color: #f2e8d0; font-size: 15px; white-space: nowrap; max-width: 96vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }

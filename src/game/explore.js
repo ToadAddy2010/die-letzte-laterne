@@ -205,7 +205,7 @@ export class Explore {
   }
   startEvent() {
     const roll = Math.random();
-    if (roll < .38) this.evStar(); else if (roll < .72) this.evRaid(); else this.evTreasure();
+    if (roll < .28) this.evStar(); else if (roll < .52) this.evRaid(); else if (roll < .72) this.evTreasure(); else this.evRift();
   }
   evStar() {
     const o = this.spot(55, 95); if (!o) return;
@@ -231,6 +231,29 @@ export class Explore {
     this.ev = { kind: 'treasure', x: e.x, z: e.z, life: 32, m, e, lvl: reg.lvl };
     G.ui.toast('Ein Schatzgoblin rennt mit Beute davon!', 'gold'); G.audio?.quest();
   }
+  /** Mondriss: drei Wellen, am Ende wartet seltene Beute. */
+  evRift() {
+    const o = this.spot(58, 98); if (!o) return;
+    const reg = regionAt(o.x, o.z), y = groundY(o.x, o.z), c = 0x9a5aff, m = this.beam(c, .3, 2.1), portal = new THREE.Group();
+    m.position.set(o.x, y, o.z); G.worldGroup.add(m);
+    const ring = new THREE.Mesh(new THREE.TorusGeometry(3.3, .24, 10, 44), new THREE.MeshBasicMaterial({ color: 0xc8a0ff, fog: false, toneMapped: false }));
+    const disc = new THREE.Mesh(new THREE.CircleGeometry(3.15, 40), new THREE.MeshBasicMaterial({ color: 0x5a22c0, transparent: true, opacity: .62, side: THREE.DoubleSide, blending: THREE.AdditiveBlending, depthWrite: false, fog: false }));
+    portal.add(ring, disc); portal.position.set(o.x, y + 3.9, o.z); G.worldGroup.add(portal);
+    this.ev = { kind: 'rift', ...o, y, life: 170, m, portal, lvl: reg.lvl, reg, foes: [], wave: 0, wait: 0, c };
+    G.ui.toast('Ein Mondriss öffnet sich ganz in der Nähe', 'spell'); G.audio?.roar();
+  }
+  riftWave(E) {
+    E.wave++;
+    const list = ROAM[E.reg.id].night, n = 2 + E.wave + (E.lvl > 10 ? 1 : 0);
+    G.ui.banner(`Welle ${E.wave} von 3`, 'Schließe den Mondriss');
+    G.vfx?.shock(E.x, E.y, E.z, 16, E.c, .7); G.audio?.roar();
+    for (let i = 0; i < n; i++) {
+      const a = i / n * TAU + E.wave, q = { x: E.x + Math.cos(a) * 9, z: E.z + Math.sin(a) * 9 }; resolve(q, 1.2);
+      const e = G.enemies.spawn(list[i % list.length], q.x, q.z, { lv: E.lvl + E.wave - 1, elite: E.wave === 3 && i === 0 ? ['flamme', 'frost', 'vampir', 'schatten', 'rasend', 'fels'][Math.floor(Math.random() * 6)] : undefined });
+      e.summoned = true; e.aggro = true; e.state = 'chase'; E.foes.push(e);
+      G.fx.burst(q.x, groundY(q.x, q.z) + 1, q.z, E.c, 16, 6, .22, .6);
+    }
+  }
   updateEvent(dt) {
     const E = this.ev, P = G.player;
     if (G.mode === 'play') E.life -= dt;
@@ -251,6 +274,23 @@ export class Explore {
         G.ui.whisper('Geretteter Händler', ['Bei allen Pilzen, das war knapp! Nimm das, und erzähl niemandem, wie laut ich geschrien habe.']);
         this.endEvent(); return;
       }
+    } else if (E.kind === 'rift') {
+      E.portal.rotation.y += dt * .7; E.portal.children[1].material.opacity = .52 + Math.sin(G.t * 3.4) * .14;
+      if (Math.random() < dt * 24) { const a = Math.random() * TAU; G.fx.burst(E.x + Math.cos(a) * 3.2, E.y + 3.9 + Math.sin(a) * 3.2, E.z, 0xc8a0ff, 1, 1.5, .16, .7, -1); }
+      if (!E.wave) { if (Math.hypot(E.x - P.x, E.z - P.z) < 24) this.riftWave(E); }
+      else if (!E.foes.some(e => !e.dead)) {
+        E.wait += dt;
+        if (E.wait > 1.3) {
+          E.wait = 0; E.foes = [];
+          if (E.wave < 3) this.riftWave(E);
+          else {
+            P.addXp(60 + E.lvl * 34); P.addGold(70 + E.lvl * 34); P.addItem(E.lvl > 12 ? 'trank3' : 'trank2');
+            G.feats?.bump('rifts'); G.vfx?.shock(E.x, E.y, E.z, 24, E.c, .9); G.fx.burst(E.x, E.y + 4, E.z, E.c, 60, 12, .3, 1.1); G.audio?.shard();
+            if (!G.enemies.legend({ x: E.x, y: E.y, z: E.z, lv: E.lvl + 2 }, .5)) G.ui.banner('Mondriss geschlossen', 'Das Licht hält noch eine Nacht');
+            this.endEvent(); return;
+          }
+        }
+      }
     } else if (E.kind === 'treasure') {
       if (E.m && !E.e.dead) E.m.position.set(E.e.x, E.e.y, E.e.z);
       if (E.e.dead) {
@@ -262,6 +302,7 @@ export class Explore {
       }
     }
     if (E.life <= 0 || Math.hypot(E.x - P.x, E.z - P.z) > 380) {
+      if (E.kind === 'rift') G.ui.toast('Der Mondriss schließt sich', 'warn');
       if (E.kind === 'treasure') { G.ui.toast('Der Schatzgoblin ist entkommen', 'warn'); G.fx.burst(E.e.x, E.e.y + 1, E.e.z, 0xb0a8a0, 24, 6, .3, .7); }
       this.endEvent();
     }
@@ -271,6 +312,7 @@ export class Explore {
     if (!E) return;
     if (E.m) { G.worldGroup.remove(E.m); E.m.material.dispose(); }
     if (E.npc) G.worldGroup.remove(E.npc.root);
+    if (E.portal) { G.worldGroup.remove(E.portal); for (const q of E.portal.children) { q.geometry.dispose(); q.material.dispose(); } }
     if (E.foes) for (const e of E.foes) if (!e.dead && G.enemies.list.includes(e)) G.enemies.removeEnemy(e);
     if (E.e && !E.e.dead && G.enemies.list.includes(E.e)) G.enemies.removeEnemy(E.e);
   }

@@ -7,6 +7,7 @@ import { clamp, damp, angDiff } from '../core/util.js';
 import { resolve } from '../world/collision.js';
 import { heightAt } from '../world/terrain.js';
 import { groundY } from '../game/fx.js';
+import { TALENT, TALENTS } from '../data/extras.js';
 
 export const xpFor = l => Math.floor(40 * Math.pow(l, 1.45));
 /** Aussehen einer Spielfigur. Der Mitspieler trägt die Startrobe in Rot, damit man euch unterscheiden kann. */
@@ -31,10 +32,18 @@ export class Player {
       level: 1, xp: 0, pts: 0, kraft: 5, geist: 5, ausdauer: 5, hp: 100, mp: 40, st: 100, gold: 25,
       inv: { trank1: 2 }, equip: { weapon: 'holzschwert', armor: 'wanderrobe', trinket1: null, trinket2: null },
       spells: [], cds: {}, potionCd: 0, atkT: -1, atkDur: .44, combo: 0, comboWindow: 0, hitDone: false, rolling: 0, rollX: 0, rollZ: 0, rollCd: 0,
-      invuln: 0, blocking: false, slowT: 0, cast: 0, flash: 0, dead: false, downed: false, downT: 0, sprintOn: false, sprintLatch: false, shiftT: 0, shiftWas: false, shiftIgnore: false, idleT: 0, lunge: 0, dashHit: false, lock: null, lastShrine: 's_hutdorf', regenT: 0, anim: 0, flame: null, shardBonus: 0,
+      invuln: 0, blocking: false, slowT: 0, cast: 0, flash: 0, dead: false, downed: false, downT: 0, sprintOn: false, sprintLatch: false, shiftT: 0, shiftWas: false, shiftIgnore: false, idleT: 0, lunge: 0, dashHit: false, lock: null, lastShrine: 's_hutdorf', regenT: 0, anim: 0, flame: null, shardBonus: 0, blockT: 0, charge: 0, charging: false, chargeFull: false, lmbHold: 0, counterT: 0, pdCd: 0, talents: {}, lastStand: 0, heavy: 0,
     });
     this.recalc(); this.hp = this.maxHp; this.mp = this.maxMp; this.st = this.maxSt;
   }
+  tal(id) { return this.talents?.[id] ? 1 : 0; }
+  get talentPts() { return Math.floor(this.level / 2) - Object.keys(this.talents).length; }
+  canLearn(id) {
+    const t = TALENT[id]; if (!t || this.talents[id] || this.talentPts <= 0) return false;
+    const row = TALENTS.filter(q => q.tree === t.tree), i = row.indexOf(t);
+    return i === 0 || !!this.talents[row[i - 1].id];
+  }
+  learn(id) { if (!this.canLearn(id)) { G.audio?.deny(); return false; } this.talents[id] = 1; this.recalc(); G.audio?.chime(); return true; }
   gear() { return ['weapon', 'armor', ...TRINKETS].map(s => ITEMS[this.equip[s]]).filter(Boolean); }
   fx(key) { return this.gear().reduce((a, i) => a + (i.fx?.[key] || 0), 0); }
   recalc() {
@@ -44,8 +53,8 @@ export class Player {
     this.maxHp = 80 + this.level * 12 + this.ausdT * 8 + (a?.hp || 0) + this.fx('hp') + sb * 30;
     this.maxMp = 40 + this.level * 4 + this.geistT * 6 + (a?.mp || 0) + this.fx('mp') + sb * 15;
     this.maxSt = 80 + this.ausdT * 4;
-    this.atk = (w?.dmg || 2) + this.kraftT * 1.6;
-    this.sp = (w?.sp || 0) + this.geistT * 2.1 + this.level * .5;
+    this.atk = ((w?.dmg || 2) + this.kraftT * 1.6) * (1 + .12 * this.tal('klinge'));
+    this.sp = ((w?.sp || 0) + this.geistT * 2.1 + this.level * .5) * (1 + .12 * this.tal('glut'));
     this.def = (a?.def || 0);
     this.crit = .05 + this.fx('crit');
     this.speedMul = 1 + this.fx('speed');
@@ -141,47 +150,76 @@ export class Player {
     }
   }
   shake(v) { if (G.settings.shake) G.shake = Math.max(G.shake || 0, v); }
-  startAttack() {
-    if (this.atkT >= 0 || this.rolling > 0 || this.st < 7) { if (this.st < 7) G.audio?.deny(); return; }
-    this.combo = this.comboWindow > 0 ? (this.combo + 1) % 3 : 0;
-    this.st -= 8; this.atkT = 0; this.hitDone = false;
-    this.dashHit = !G.mount?.riding && this.sprintOn && Math.hypot(this.vx, this.vz) > 11;
-    if (this.dashHit) this.lunge = .17;
-    this.atkDur = (ITEMS[this.equip.weapon]?.w === 'great' || ITEMS[this.equip.weapon]?.w === 'hammer') ? .58 : ITEMS[this.equip.weapon]?.w === 'dagger' ? .34 : .44;
+  startAttack(heavy = 0) {
+    const cost = heavy ? 18 : 8;
+    if (this.atkT >= 0 || this.rolling > 0 || this.st < cost - 1) { if (this.st < cost - 1) G.audio?.deny(); return; }
+    this.heavy = heavy;
+    this.combo = heavy ? 2 : this.comboWindow > 0 ? (this.combo + 1) % 3 : 0;
+    this.st -= cost; this.atkT = 0; this.hitDone = false;
+    this.dashHit = !heavy && !G.mount?.riding && this.sprintOn && Math.hypot(this.vx, this.vz) > 11;
+    if (this.dashHit) this.lunge = .17; else if (heavy) this.lunge = .09;
+    this.atkDur = ((ITEMS[this.equip.weapon]?.w === 'great' || ITEMS[this.equip.weapon]?.w === 'hammer') ? .58 : ITEMS[this.equip.weapon]?.w === 'dagger' ? .34 : .44) * (heavy ? 1.16 : 1);
     if (G.mount?.riding) { G.audio?.swing(); return; }
     if (this.lock && !this.lock.dead) this.yaw = Math.atan2(this.lock.x - this.x, this.lock.z - this.z);
     else { const e = G.enemies.nearestFront(this, 6.5) ?? G.enemies.nearestAny(this, I.touch ? 6.5 : 4.4); if (e) this.yaw = Math.atan2(e.x - this.x, e.z - this.z); else if (!I.stick.on && !(I.down('KeyW') || I.down('KeyA') || I.down('KeyS') || I.down('KeyD'))) this.yaw = this.camYaw + Math.PI; }
     G.audio?.swing();
+    if (heavy) { G.audio?.heavy?.(); G.vfx?.shock(this.x, this.y, this.z, 3.2 + heavy * 3, 0xffc445, .3); }
   }
   doHit() {
-    const M = G.mount, riding = !!M?.riding, w = ITEMS[this.equip.weapon], long = w?.w === 'great' || w?.w === 'spear' || w?.w === 'scythe', R = (long ? 5 : 4) + (riding ? 2.2 : 0), arc = riding ? 1.4 : this.combo === 2 ? .75 : 1.15;
+    const M = G.mount, riding = !!M?.riding, w = ITEMS[this.equip.weapon], long = w?.w === 'great' || w?.w === 'spear' || w?.w === 'scythe', heavy = this.heavy || 0, R = (long ? 5 : 4) + (riding ? 2.2 : 0) + (heavy ? 1.1 : 0), arc = heavy ? 1.55 : riding ? 1.4 : this.combo === 2 ? .75 : 1.15;
     let fx = Math.sin(this.yaw), fz = Math.cos(this.yaw);
     if (riding) {
       const t = this.lock && !this.lock.dead ? this.lock : G.enemies.nearestFront(this, R + 2);
       if (t) { const dx = t.x - this.x, dz = t.z - this.z, l = Math.hypot(dx, dz) || 1; fx = dx / l; fz = dz / l; } else [fx, fz] = this.aimDir();
     }
-    const charge = riding ? 1 + Math.min(.5, M.speed / 62) : this.dashHit ? 1.35 : 1;
-    let any = false;
+    const charge = riding ? 1 + Math.min(.5, M.speed / 62) : this.dashHit ? 1.35 : 1, hv = heavy ? (1.7 + heavy * 1.5) * (1 + .35 * this.tal('wucht')) : 1, counter = this.counterT > 0, cm = counter ? 1.6 + .4 * this.tal('konter') : 1;
+    const post = (heavy ? 2.6 + heavy * 2.4 : this.combo === 2 ? 1.6 : 1) * (1 + .3 * this.tal('bruch'));
+    let any = false, fin = null;
     for (const e of G.enemies.list) {
       if (e.dead) continue;
       const dx = e.x - this.x, dz = e.z - this.z, d = Math.hypot(dx, dz);
       if (d > R + e.rad) continue;
       if (d > .4 && Math.acos(clamp((dx * fx + dz * fz) / d, -1, 1)) > arc) continue;
       if (Math.abs(e.y - this.y) > 5 + e.model.height * .5) continue;
-      const crit = Math.random() < this.crit, dmg = this.atk * charge * (this.combo === 2 ? 1.5 : 1) * (.92 + Math.random() * .16) * (crit ? 2 : 1);
-      e.hurt(dmg, { crit, kx: fx, kz: fz, knock: this.combo === 2 ? 7 : 3 });
+      const stunned = e.stun > 0, fb = stunned ? (e.boss ? 2.2 : 3.4) * (1 + .5 * this.tal('henker')) : 1, crit = Math.random() < this.crit, dmg = this.atk * charge * (this.combo === 2 ? 1.5 : 1) * hv * cm * fb * (.92 + Math.random() * .16) * (crit ? 2 : 1);
+      e.hurt(dmg, { crit: crit || stunned || counter, kx: fx, kz: fz, knock: heavy ? 12 : this.combo === 2 ? 7 : 3, post: stunned ? 0 : post, finish: stunned });
+      G.vfx?.slash(e.x, e.y + e.model.height * .55, e.z, stunned ? 0xffd24a : heavy ? 0xffc445 : 0xfff0d0, stunned || heavy ? 3.1 : 1.9);
+      if (this.tal('blut')) this.hp = Math.min(this.maxHp, this.hp + dmg * .05);
+      if (stunned) fin = e;
       any = true;
     }
-    if (G.net?.duelOn && G.net.pvpMelee(this, fx, fz, R, arc, this.atk * charge * (this.combo === 2 ? 1.5 : 1))) any = true;
-    if (any) { G.hitstop = .045; this.shake(.14); G.audio?.hit(); }
+    if (G.net?.duelOn && G.net.pvpMelee(this, fx, fz, R, arc, this.atk * charge * (this.combo === 2 ? 1.5 : 1) * Math.min(1.8, hv))) any = true;
+    if (any) { G.hitstop = fin ? .14 : heavy ? .095 : .045; this.shake(fin ? .6 : heavy ? .42 : .14); G.audio?.hit(); if (counter) this.counterT = 0; if (heavy) G.feats?.bump('heavies'); }
+    if (fin) {
+      G.slowmo?.(.42, .2); G.feats?.bump('finishers'); G.audio?.boom();
+      G.ui.floatText(fin.x, fin.y + fin.model.height + 1, fin.z, 'Todesstoß', 'crit');
+      G.vfx?.shock(fin.x, fin.y, fin.z, 8, 0xffd24a, .5); G.fx.burst(fin.x, fin.y + fin.model.height * .6, fin.z, 0xffd24a, 34, 11, .26, .7);
+    }
+  }
+  /** Perfekt getimtes Ausweichen verlangsamt kurz die Zeit und lädt einen Konter auf. */
+  perfectDodge() {
+    this.pdCd = 1.1; this.counterT = 2.4; this.st = Math.min(this.maxSt, this.st + 16);
+    G.slowmo?.(.5, .26); G.feats?.bump('perfects'); G.audio?.chime();
+    G.ui.floatText(this.x, this.y + 3.2, this.z, 'Perfekt!', 'crit');
+    G.vfx?.shock(this.x, this.y, this.z, 6, 0x9fd8ff, .42); G.fx.burst(this.x, this.y + 1.4, this.z, 0x9fd8ff, 22, 7, .2, .55, -1);
+  }
+  parry(src, sx, sz, l) {
+    this.st = Math.min(this.maxSt, this.st + 24); this.counterT = 2; this.invuln = .28;
+    src.addPosture?.(src.boss ? 5 : 3.2);
+    G.slowmo?.(.3, .24); G.hitstop = .08; G.feats?.bump('parries'); this.shake(.3);
+    G.audio?.block(); G.audio?.chime();
+    G.ui.floatText(this.x, this.y + 3.2, this.z, 'Parade!', 'crit');
+    const px = this.x + sx / l * 1.1, pz = this.z + sz / l * 1.1;
+    G.vfx?.slash(px, this.y + 1.9, pz, 0xffe9a8, 3.3); G.vfx?.shock(this.x, this.y, this.z, 5, 0xffe9a8, .36); G.fx.burst(px, this.y + 1.9, pz, 0xffe9a8, 28, 12, .18, .42);
   }
   hurt(amount, src, o = {}) {
     if (this.dead || this.invuln > 0 || G.mode !== 'play') return false;
-    if (this.rolling > 0) { G.audio?.dodge(); return false; }
+    if (this.rolling > 0) { if (.46 - this.rolling < .24 + .08 * this.tal('schritt') && this.pdCd <= 0) this.perfectDodge(); else G.audio?.dodge(); return false; }
     let dmg = amount * (G.moonGaze > 0 ? 1.2 : 1) * 100 / (100 + this.def * 3);
     if (this.blocking && src) {
       const sx = src.x - this.x, sz = src.z - this.z, l = Math.hypot(sx, sz) || 1;
       if ((sx * Math.sin(this.yaw) + sz * Math.cos(this.yaw)) / l > .15 && this.st > 4) {
+        if (this.blockT < .24 + .06 * this.tal('schritt')) { this.parry(src, sx, sz, l); return false; }
         this.st = Math.max(0, this.st - Math.min(30, dmg * .9)); dmg *= .22;
         G.fx.burst(this.x + sx / l, this.y + 1.9, this.z + sz / l, 0xffe9a8, 12, 8, .17, .3); G.audio?.block();
         G.ui.floatText(this.x, this.y + 3, this.z, 'Geblockt', 'block');
@@ -195,6 +233,7 @@ export class Player {
     G.ui.floatText(this.x, this.y + 3.1, this.z, `-${dmg}`, 'hurt'); G.retro.u.hurt.value = Math.min(1, G.retro.u.hurt.value + .6);
     G.fx.burst(this.x, this.y + 1.6, this.z, 0xff3a2a, 10, 6, .2, .45); G.audio?.hurt(); this.shake(.3);
     if (lostDuel) { G.net?.duelLost(); return true; }
+    if (this.hp <= 0 && this.tal('flamme') && this.lastStand <= 0 && !o.pvp) { this.hp = 1; this.lastStand = 90; this.invuln = 1.8; G.slowmo?.(.7, .22); G.ui.banner('Zweite Flamme', 'Die Laterne hält dich am Leben'); G.vfx?.shock(this.x, this.y, this.z, 12, 0xffb060, .6); G.audio?.lantern(); return true; }
     if (this.hp <= 0) { this.hp = 0; G.mount?.dismount(); this.dead = true; this.deadT = 0; G.stats.deaths++; if (!G.net?.goDown()) G.game.onDeath(); }
     else if (G.mount?.riding && dmg >= this.maxHp * .2) G.mount.throwOff(src);
     return true;
@@ -202,7 +241,7 @@ export class Player {
   update(dt) {
     this.anim += dt;
     for (const k in this.cds) if (this.cds[k] > 0) this.cds[k] -= dt;
-    this.potionCd = Math.max(0, this.potionCd - dt); this.rollCd = Math.max(0, this.rollCd - dt); this.invuln = Math.max(0, this.invuln - dt); this.slowT = Math.max(0, this.slowT - dt); this.cast = Math.max(0, this.cast - dt); this.comboWindow = Math.max(0, this.comboWindow - dt);
+    this.potionCd = Math.max(0, this.potionCd - dt); this.rollCd = Math.max(0, this.rollCd - dt); this.invuln = Math.max(0, this.invuln - dt); this.slowT = Math.max(0, this.slowT - dt); this.cast = Math.max(0, this.cast - dt); this.comboWindow = Math.max(0, this.comboWindow - dt); this.counterT = Math.max(0, this.counterT - dt); this.pdCd = Math.max(0, this.pdCd - dt); this.lastStand = Math.max(0, this.lastStand - dt);
     if (this.flash > 0) { this.flash -= dt; setFlash(this.model, this.flash > 0); }
     if (this.dead) { this.deadT += dt; G.net?.tickDown(dt); animate(this.model, { t: this.anim, speed: 0, attack: -1, dead: Math.min(1, this.deadT / 1.1) }); return; }
     const play = G.mode === 'play', M = G.mount;
@@ -219,7 +258,16 @@ export class Player {
       // Am Handy dreht die Kamera beim Laufen sanft mit.
       if (stick && !I.camDrag && !riding && !this.lock && f > -.35) this.camYaw += angDiff(this.camYaw, this.yaw + Math.PI) * Math.min(1, dt * .95) * Math.abs(s);
       if (I.lmbP || I.hit('KeyX')) this.startAttack();
-      this.blocking = !riding && I.rmb && this.atkT < 0 && this.rolling <= 0 && this.st > 2;
+      this.lmbHold = I.lmb && !I.touch ? this.lmbHold + dt : 0;
+      const wantCharge = !riding && this.atkT < 0 && this.rolling <= 0 && this.st >= 17 && (I.down('KeyG') || this.lmbHold > .42);
+      if (wantCharge) {
+        this.charging = true; this.charge = Math.min(1, this.charge + dt / .72);
+        if (Math.random() < dt * (16 + this.charge * 26)) { const a = Math.random() * 6.283, r = 1.5 - this.charge * .7; G.fx.burst(this.x + Math.cos(a) * r, this.y + .4 + Math.random() * 2, this.z + Math.sin(a) * r, 0xffc445, 1, 1.6, .15, .34, -5); }
+        if (this.charge >= 1 && !this.chargeFull) { this.chargeFull = true; G.audio?.chime(); G.vfx?.shock(this.x, this.y, this.z, 4.5, 0xffc445, .3); }
+      } else if (this.charging) { this.charging = false; this.chargeFull = false; const k = this.charge; this.charge = 0; if (k >= .28) this.startAttack(k); }
+      const wasBlock = this.blocking;
+      this.blocking = !riding && !this.charging && I.rmb && this.atkT < 0 && this.rolling <= 0 && this.st > 2;
+      if (this.blocking) this.blockT = wasBlock ? this.blockT + dt : 0;
       if (riding) {
         M.idleMouse = I.mdx || I.mdy ? 0 : M.idleMouse + dt;
         if (!this.lock && f >= 0 && M.speed > 6 && M.idleMouse > .7) this.camYaw += angDiff(this.camYaw, this.yaw + Math.PI) * Math.min(1, dt * 1.5);
@@ -228,7 +276,7 @@ export class Player {
       if (I.hit('KeyR')) this.usePotion('hp');
       if (I.hit('KeyT')) this.usePotion('mp');
       if (I.hit('KeyF')) this.toggleLock();
-    } else this.blocking = false;
+    } else { this.blocking = false; this.charging = false; this.charge = 0; this.chargeFull = false; }
     if (this.lock && (this.lock.dead || Math.hypot(this.lock.x - this.x, this.lock.z - this.z) > 46)) this.lock = null;
     if (this.lock) this.camYaw += angDiff(this.camYaw, Math.atan2(this.x - this.lock.x, this.z - this.lock.z)) * Math.min(1, dt * 9);
 
@@ -243,11 +291,12 @@ export class Player {
     if (wet) speed *= .58;
     if (this.slowT > 0) speed *= .62;
     if (this.blocking) speed *= .42;
+    if (this.charging) speed *= .34;
     if (this.atkT >= 0) speed *= .28;
     if (riding) M.drive(this, dt, mx, mz, ml, play);
     else {
-      if (play && I.hit('KeyC') && this.rolling <= 0 && this.rollCd <= 0 && this.st >= 14) {
-        this.st -= 14; this.rolling = .46; this.rollCd = .62; this.atkT = -1;
+      if (play && I.hit('KeyC') && this.rolling <= 0 && this.rollCd <= 0 && this.st >= 14 * (1 - .3 * this.tal('leicht'))) {
+        this.st -= 14 * (1 - .3 * this.tal('leicht')); this.rolling = .46; this.rollCd = .62; this.atkT = -1;
         if (ml > 0) { this.rollX = mx; this.rollZ = mz; } else { this.rollX = Math.sin(this.yaw); this.rollZ = Math.cos(this.yaw); }
         this.yaw = Math.atan2(this.rollX, this.rollZ); G.audio?.roll();
       }
@@ -264,7 +313,10 @@ export class Player {
       this.x += this.vx * dt; this.z += this.vz * dt; this.y += this.vy * dt;
       resolve(this, .72);
       const g = groundY(this.x, this.z);
-      if (this.y <= g + (this.onGround ? .5 : 0) && this.vy <= 0) { this.y = g; this.vy = 0; this.onGround = true; } else if (this.y > g + .6) this.onGround = false;
+      if (this.y <= g + (this.onGround ? .5 : 0) && this.vy <= 0) {
+        if (!this.onGround && this.vy < -11 && !G.inDungeon) { G.fx.burst(this.x, g + .15, this.z, 0xb0a890, 12, 4, .24, .42, 1); G.vfx?.shock(this.x, g, this.z, 2.6, 0xc8c0a8, .26); }
+        this.y = g; this.vy = 0; this.onGround = true;
+      } else if (this.y > g + .6) this.onGround = false;
     }
     if (this.atkT >= 0) {
       this.atkT += dt / this.atkDur;
@@ -274,13 +326,15 @@ export class Player {
     if (sprint) this.st -= 15 * dt;
     else if (riding && M.gallop) this.st -= 6 * dt;
     else if (this.atkT < 0 && this.rolling <= 0 && !this.blocking) this.st = Math.min(this.maxSt, this.st + 30 * dt);
-    this.mp = Math.min(this.maxMp, this.mp + (1.4 + this.geistT * .08) * dt);
+    this.mp = Math.min(this.maxMp, this.mp + (1.4 + this.geistT * .08) * (1 + .5 * this.tal('docht')) * dt);
     const regen = this.fx('regen');
     if (regen) this.hp = Math.min(this.maxHp, this.hp + regen * 1.6 * dt);
+    if (this.tal('waerme')) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * .007 * dt);
     if (!G.enemies.inCombat) this.hp = Math.min(this.maxHp, this.hp + this.maxHp * .012 * dt);
     this.st = Math.max(0, this.st);
+    if (this.hp < this.maxHp * .25) G.retro.u.hurt.value = Math.max(G.retro.u.hurt.value, .16 + Math.max(0, Math.sin(this.anim * 5)) * .12);
     const hsp = Math.hypot(this.vx, this.vz);
-    animate(this.model, { t: this.anim, speed: riding || this.atkT >= 0 ? 0 : hsp, attack: this.atkT, combo: this.combo, cast: this.cast, block: this.blocking, ride: riding, air: !this.onGround && !riding, roll: this.rolling > 0 ? 1 - this.rolling / .46 : 0 });
+    animate(this.model, { t: this.anim, speed: riding || this.atkT >= 0 ? 0 : hsp, attack: this.charging ? .04 + this.charge * .17 : this.atkT, combo: this.charging ? 2 : this.combo, cast: this.cast, block: this.blocking, ride: riding, air: !this.onGround && !riding, roll: this.rolling > 0 ? 1 - this.rolling / .46 : 0 });
     if (!riding && hsp > 5 && this.onGround && Math.random() < dt * 8 && !G.inDungeon) G.fx.burst(this.x, this.y + .1, this.z, wet ? 0x8fb8ff : 0xb0a8a0, 1, 1, .12, .3, 0);
     this.syncModel();
     if (riding) this.light.position.set(this.x - Math.sin(this.yaw) * 2.8, this.y + 8, this.z - Math.cos(this.yaw) * 2.8);
@@ -322,7 +376,7 @@ export class Player {
   updateCamera(cam, dt) {
     if (G.shake > 0) G.shake = Math.max(0, G.shake - dt * 1.3);
     const riding = !!G.mount?.riding, p = this.camPitch, cp = Math.cos(p), d = G.house ? Math.min(this.camDist, 6.4) : this.camDist + (riding ? 2.8 : 0), sy = Math.sin(this.camYaw), cy = Math.cos(this.camYaw), tx = this.x, ty = this.y + (riding ? 4.3 : 2.45), tz = this.z;
-    const fov = 62 + (G.mount?.gallop ? 7 : 0);
+    const fov = 62 + (G.mount?.gallop ? 7 : 0) + (this.sprintOn && Math.hypot(this.vx, this.vz) > 12 ? 3.5 : 0) - this.charge * 5;
     if (Math.abs(cam.fov - fov) > .02) { cam.fov = damp(cam.fov, fov, 5, dt); cam.updateProjectionMatrix(); }
     let dist = d;
     if (G.inDungeon) { for (let q = 1; q <= 16; q++) { const k = q / 16 * d; if (G.dungeon.isWall(tx + sy * cp * k, tz + cy * cp * k)) { dist = Math.max(.25, k - .6); break; } } }

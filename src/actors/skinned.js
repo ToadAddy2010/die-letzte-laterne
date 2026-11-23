@@ -185,7 +185,7 @@ export function makeHuman(spec, dress) {
   const t = cached(`t${spec.armor}_${spec.cape}_${spec.cape2}_${W}`, () => torsoParts(spec, W)); if (t) sock(m, 'spine_03', t);
   if (!spec.skull) sock(m, 'pelvis', cached(`p${spec.belt}_${spec.apron}_${W}`, () => hipParts(spec, W)));
   if (spec.armor) for (const side of ['l', 'r']) sock(m, `upperarm_${side}`, cached(`sh${spec.armor}`, () => shoulder(spec)));
-  if (spec.weapon) handSock(m, 'r', weaponGeo(spec.weapon, spec.weaponColor));
+  if (spec.weapon) { m.wSock = handSock(m, 'r', weaponGeo(spec.weapon, spec.weaponColor)); m.wType = spec.weapon; }
   if (spec.lantern) { m.lantern = handSock(m, 'l', null); const q = new THREE.Mesh(cached('lantern', lanternGeo), MAT.solid); q.frustumCulled = false; q.castShadow = true; m.lantern.add(q); m.meshes.push(q); m.lanternMesh = q; }
   else if (spec.shield) sock(m, 'lowerarm_l', cached(`sd${spec.shieldColor}`, () => shieldGeo(spec)), [.13, -.1, 0]);
   dress?.(m, char);
