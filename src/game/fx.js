@@ -14,7 +14,7 @@ export const groundY = (x, z) => (G.inDungeon ? 0 : Math.max(heightAt(x, z), -.4
 export class FX {
   constructor(scene) {
     this.scene = scene;
-    this.mesh = new THREE.InstancedMesh(new THREE.BoxGeometry(1, 1, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), MAXP);
+    this.mesh = new THREE.InstancedMesh(new THREE.IcosahedronGeometry(.56, 1), new THREE.MeshBasicMaterial({ color: 0xffffff, fog: false }), MAXP);
     this.mesh.frustumCulled = false;
     this.mesh.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(MAXP * 3), 3);
     this.mesh.instanceColor.setUsage(THREE.DynamicDrawUsage);

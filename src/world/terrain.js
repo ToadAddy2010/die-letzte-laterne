@@ -170,7 +170,7 @@ let aoAt = null;
 export const setTerrainAO = fn => { aoAt = fn; };
 
 function gridGeometry(size, step, offsetY, x0, z0) {
-  const v = Math.round(size / step) + 1, pos = new Float32Array(v * v * 3), nor = new Float32Array(v * v * 3), col = new Float32Array(v * v * 3), uv = new Float32Array(v * v * 2), idx = [];
+  const v = Math.round(size / step) + 1, pos = new Float32Array(v * v * 3), nor = new Float32Array(v * v * 3), col = new Float32Array(v * v * 3), uv = new Float32Array(v * v * 2), rough = new Float32Array(v * v), idx = [];
   let a = 0;
   for (let q = 0; q < v; q++) for (let p = 0; p < v; p++, a++) {
     const x = x0 + p * step, z = z0 + q * step, gi = clamp(Math.round((x + HALF) / CELL), 0, N), gj = clamp(Math.round((z + HALF) / CELL), 0, N), k = id(gi, gj);
@@ -181,6 +181,7 @@ function gridGeometry(size, step, offsetY, x0, z0) {
     const ao = aoAt ? 1 - aoAt(x, z) : 1;
     col[a * 3] = LIN[COL[k * 3]] * ao; col[a * 3 + 1] = LIN[COL[k * 3 + 1]] * ao; col[a * 3 + 2] = LIN[COL[k * 3 + 2]] * (ao * .9 + .1);
     uv[a * 2] = x * .16; uv[a * 2 + 1] = z * .16;
+    const rid = REGIONS[REG[k]].id; rough[a] = rid === 'desert' ? .08 : rid === 'frost' ? .16 : rid === 'ash' ? .35 : 1;
     if (p < v - 1 && q < v - 1) { const b = a + 1, c = a + v, d = c + 1; idx.push(a, c, b, b, c, d); }
   }
   const g = new THREE.BufferGeometry();
@@ -188,6 +189,7 @@ function gridGeometry(size, step, offsetY, x0, z0) {
   g.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   g.setAttribute('color', new THREE.BufferAttribute(col, 3));
   g.setAttribute('uv', new THREE.BufferAttribute(uv, 2));
+  g.setAttribute('aRough', new THREE.BufferAttribute(rough, 1));
   g.setIndex(idx);
   g.computeBoundingSphere();
   return g;
@@ -236,7 +238,7 @@ export class Terrain {
     g.setAttribute('uv', new THREE.Float32BufferAttribute(uv, 2));
     g.setIndex(idx);
     const m = new THREE.Mesh(g, MAT.road);
-    m.frustumCulled = false;
+    m.frustumCulled = false; m.receiveShadow = true;
     this.group.add(m);
   }
   update(px, pz, t, budget = 2) {
@@ -255,6 +257,7 @@ export class Terrain {
     for (let i = 0; i < budget && this.queue.length; i++) {
       const c = this.queue.pop();
       const m = new THREE.Mesh(gridGeometry(CHUNK, CELL, 0, c.x * CHUNK - HALF, c.z * CHUNK - HALF), MAT.terrain);
+      m.receiveShadow = true;
       this.group.add(m); this.map.set(c.key, m);
     }
     this.water.position.x = px; this.water.position.z = pz;

@@ -127,7 +127,9 @@ export class Interact {
         const d = Math.hypot(o.x - P.x, o.z - P.z);
         if (o.m) {
           const vis = active && d < 240 && this.useable(o);
-          o.m.visible = vis;
+          // Ein Portal direkt an der Kamera würde sonst das ganze Bild verdecken.
+          const atCam = o.geo === 'portal' && Math.hypot(o.x - G.camera.position.x, o.z - G.camera.position.z) < 3.4;
+          o.m.visible = vis && !atCam;
           if (vis && o.float) { o.m.rotation.y += dt * 1.7; o.m.position.y = o.y + o.float + Math.sin(t * 2.2 + o.x) * .22; }
           if (vis && o.kind === 'chest' && d < 30 && Math.random() < dt * 1.4) G.fx.burst(o.x, o.y + 1.2, o.z, 0xffd070, 1, 1, .12, .8, -2);
           if (vis && o.kind === 'portal') o.m.rotation.y += dt;

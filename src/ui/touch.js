@@ -162,7 +162,7 @@ export class Touch {
     this.slow = avg > .03 ? this.slow + 1 : 0;
     if (this.slow >= 2) {
       this.slow = 0; G.settings.low = true;
-      if (G.settings.lines > 240) { G.settings.lines = 240; G.retro.lines = 240; G.retro.resize(G.camera); }
+      if (G.settings.lines > 540) { G.settings.lines = 540; G.retro.lines = 540; G.retro.resize(G.camera); }
       G.game.applyQuality(); G.game.saveSettings();
       G.ui.toast('Sparmodus aktiviert, damit es flüssiger läuft', 'quest');
     }

@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three.module.js';
 import { G } from '../game/state.js';
-import { makeModel, animate } from './models.js';
+import { makeModel, animate, updateDetail } from './models.js';
 import { NPCS } from '../data/npcs.js';
 import { POI } from '../data/world.js';
 import { heightAt } from '../world/terrain.js';
@@ -87,6 +87,7 @@ export class NPCs {
       n.y = n.house ? 0 : heightAt(n.x, n.z);
       n.model.root.position.set(n.x, n.y, n.z); n.model.root.rotation.y = n.yaw;
       if (d < 90) animate(n.model, { t: n.anim, speed, attack: -1, talk: n.talking });
+      else updateDetail(n.model);
       const kind = d < 120 ? G.quests.markerFor(n.id) : null;
       if (kind !== n.kind) {
         if (n.mark) { this.scene.remove(n.mark); n.mark = null; }

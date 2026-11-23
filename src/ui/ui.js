@@ -395,7 +395,7 @@ export class UI {
   }
   settingsHtml() {
     const s = G.settings;
-    return `<div class="opt"><label>Lautstärke</label><input id="oV" type="range" min="0" max="1" step=".05" value="${s.volume}"></div><div class="opt"><label>Musik</label><input id="oM" type="range" min="0" max="1" step=".05" value="${s.music}"></div><div class="opt"><label>${Input.touch ? 'Kameratempo' : 'Mausempfindlichkeit'}</label><input id="oS" type="range" min=".3" max="2.5" step=".05" value="${s.sens}"></div><div class="opt"><label>Pixelgröße</label><select id="oL">${[[240, 'Sehr grob (240)'], [360, 'Retro (360)'], [540, 'Hoch (540)'], [720, 'Scharf (720)']].map(([v, t]) => `<option value="${v}" ${s.lines === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="opt"><label>Sparmodus</label><input id="oLow" type="checkbox" ${s.low ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>${Input.touch ? 'Kamera Y umkehren' : 'Maus Y umkehren'}</label><input id="oI" type="checkbox" ${s.invertY ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Kamerawackeln</label><input id="oK" type="checkbox" ${s.shake ? 'checked' : ''} style="flex:0 0 auto"></div>`;
+    return `<div class="opt"><label>Lautstärke</label><input id="oV" type="range" min="0" max="1" step=".05" value="${s.volume}"></div><div class="opt"><label>Musik</label><input id="oM" type="range" min="0" max="1" step=".05" value="${s.music}"></div><div class="opt"><label>${Input.touch ? 'Kameratempo' : 'Mausempfindlichkeit'}</label><input id="oS" type="range" min=".3" max="2.5" step=".05" value="${s.sens}"></div><div class="opt"><label>Auflösung</label><select id="oL">${[[540, 'Niedrig (540p)'], [720, 'Mittel (720p)'], [900, 'Hoch (900p)'], [1080, 'Voll (1080p)'], [1440, 'Ultra (1440p)']].map(([v, t]) => `<option value="${v}" ${s.lines === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="opt"><label>Retro-Pixelfilter</label><input id="oRetro" type="checkbox" ${s.retro ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Sparmodus</label><input id="oLow" type="checkbox" ${s.low ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>${Input.touch ? 'Kamera Y umkehren' : 'Maus Y umkehren'}</label><input id="oI" type="checkbox" ${s.invertY ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Kamerawackeln</label><input id="oK" type="checkbox" ${s.shake ? 'checked' : ''} style="flex:0 0 auto"></div>`;
   }
   bindSettings() {
     const s = G.settings, save = () => G.game.saveSettings();
@@ -403,6 +403,7 @@ export class UI {
     $('oM').oninput = e => { s.music = +e.target.value; G.audio.applyVolume(); save(); };
     $('oS').oninput = e => { s.sens = +e.target.value; save(); };
     $('oL').onchange = e => { s.lines = +e.target.value; G.retro.lines = s.lines; G.retro.resize(G.camera); save(); };
+    $('oRetro').onchange = e => { s.retro = e.target.checked; G.retro.setStyle(s.retro); G.retro.resize(G.camera); save(); };
     $('oLow').onchange = e => { s.low = e.target.checked; G.game.applyQuality(); save(); };
     $('oI').onchange = e => { s.invertY = e.target.checked; save(); };
     $('oK').onchange = e => { s.shake = e.target.checked; save(); };

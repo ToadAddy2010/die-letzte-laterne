@@ -1,6 +1,6 @@
 import * as THREE from '../vendor/three.module.js';
 import { G } from './game/state.js';
-import { Retro, GFX } from './core/gfx.js';
+import { Retro, GFX, Kit } from './core/gfx.js';
 import { Input } from './core/input.js';
 import { UI } from './ui/ui.js';
 import { H, buildTerrain, Terrain, roadLines, regionAt, heightAt } from './world/terrain.js';
@@ -41,10 +41,10 @@ const game = G.game = {
   /** Sparmodus: weniger Pflanzen und kürzere Sichtweite für schwächere Geräte. */
   applyQuality() {
     const low = !!G.settings.low, f = G.focus || G.player || { x: 0, z: 180 }, T = G.terrain;
-    G.props.radius = low ? 2 : 3; G.props.grassRadius = low ? 1 : 2; G.props.thin = low;
+    G.props.radius = low ? 2 : 3; G.props.grassRadius = low ? 1 : 2; G.props.thin = low; if (G.sky) G.sky.dir.castShadow = !low;
     T.baseRadius ??= T.radius;
     T.radius = low ? Math.max(3, T.baseRadius - 2) : T.baseRadius;
-    if (!G.inDungeon) { G.scene.fog.density = outdoorFog(); T.flush(f.x, f.z); G.props.update(f.x, f.z, true); }
+    if (!G.inDungeon) { G.scene.fog.density = outdoorFog(); T.flush(f.x, f.z); G.props.update(f.x, f.z, true); G.structures?.update(f.x, f.z); }
   },
   resumeLock() { if (G.mode === 'play' && !G.test) Input.lock(); },
   snapshot() {
@@ -238,13 +238,15 @@ function musicScene() {
 async function boot() {
   try { Object.assign(G.settings, JSON.parse(store.get(SETTINGS) || '{}')); } catch { /* optional */ }
   const oldGfx = JSON.parse(store.get(SETTINGS) || '{}').gfx === undefined && store.get(SETTINGS);
-  if (oldGfx) { if (G.settings.lines === 360 && !matchMedia('(pointer: coarse)').matches) G.settings.lines = 540; G.settings.gfx = 2; store.set(SETTINGS, JSON.stringify(G.settings)); }
-  if (!store.get(SETTINGS) && matchMedia('(pointer: coarse)').matches) { const short = Math.min(innerWidth, innerHeight); G.settings.lines = short < 560 ? 240 : 360; G.settings.low = short < 560; }
+  if (oldGfx || (G.settings.gfx ?? 0) < 3) { if (!matchMedia('(pointer: coarse)').matches) G.settings.lines = 1080; else G.settings.lines = Math.max(G.settings.lines, 540); G.settings.gfx = 3; G.settings.retro = false; if (store.get(SETTINGS)) store.set(SETTINGS, JSON.stringify(G.settings)); }
+  if (!store.get(SETTINGS) && matchMedia('(pointer: coarse)').matches) { const short = Math.min(innerWidth, innerHeight); G.settings.lines = short < 560 ? 540 : 720; G.settings.low = short < 560; }
   G.test = new URLSearchParams(location.search).has('test');
   G.ui = new UI();
   G.ui.loading(.02);
   await nextFrame();
-  G.retro = new Retro(document.getElementById('c')); G.retro.lines = G.settings.lines;
+  G.retro = new Retro(document.getElementById('c')); G.retro.lines = G.settings.lines; G.retro.setStyle(G.settings.retro);
+  Kit.detail = G.settings.low || matchMedia('(pointer: coarse)').matches ? 0 : 1;
+  G.retro.onSlow = () => { if (G.settings.low || G.mode !== 'play') return; G.settings.low = true; game.applyQuality(); game.saveSettings(); G.ui.toast('Sparmodus aktiviert, damit es flüssiger läuft', 'quest'); };
   G.scene = new THREE.Scene();
   G.camera = new THREE.PerspectiveCamera(62, 1, .25, 4200);
   G.retro.resize(G.camera);
@@ -385,6 +387,7 @@ function step(rawDt) {
   G.ui.update(rawDt);
   G.retro.u.time.value = G.t; GFX.time.value = G.t;
   G.retro.u.fade.value = Math.max(0, G.retro.u.fade.value - rawDt * 1.3);
+  if (!G.test) G.retro.adapt(rawDt * 1000);
   G.retro.render(G.scene, cam);
   Input.endFrame();
 }

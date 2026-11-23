@@ -14,79 +14,111 @@ const FUR = 0x5a4632, FUR2 = 0x7f6548, DARK = 0x33261c, MOSS = 0x3f8a58, MOSS2 =
 const BODY = 2.56, WALK_SPEED = 19, GALLOP_SPEED = 31, RADIUS = 1.12;
 const v = new THREE.Vector3(), UP = new THREE.Vector3(0, 1, 0), dir = new THREE.Vector3(), rot = new THREE.Quaternion(), eul = new THREE.Euler();
 
-/** Verjüngter Ast zwischen zwei Punkten, für das Geweih. */
+/** Verjüngter Ast mit leichter Biegung, für das Geweih. */
 function limb(k, a, b, r0, r1, c) {
-  dir.set(b[0] - a[0], b[1] - a[1], b[2] - a[2]);
-  const h = dir.length();
-  rot.setFromUnitVectors(UP, dir.normalize()); eul.setFromQuaternion(rot, 'XYZ');
-  k.cyl(r1, r0, h, (a[0] + b[0]) / 2, (a[1] + b[1]) / 2, (a[2] + b[2]) / 2, c, { seg: 4, rx: eul.x, ry: eul.y, rz: eul.z });
+  const m = [(a[0] + b[0]) / 2 + (b[2] - a[2]) * .06, (a[1] + b[1]) / 2 + .03, (a[2] + b[2]) / 2 - (b[0] - a[0]) * .06];
+  k.tube([a, m, b], [r0, (r0 + r1) * .52, r1], c, { mat: 'bone', seg: 6, sub: 3 });
 }
+const HP = Math.PI / 2, NK = () => new Kit(71, { auto: false }), mossPad = (k, x, y, z, r) => { k.blob(r, x, y, z, MOSS, { c2: MOSS2, j: .08, sy: .62, mat: 'leaf', uv: 1.3 }); k.leaves(x, y + r * .1, z, r, 26, MOSS, MOSS2, { size: r * .24, sy: .66 }); };
+const capOn = (k, x, y, z, r) => {
+  k.loft([[y - r * .9, .03], [y - r * .3, .035], [y, .05]], x, 0, z, 0xe8ded0, { mat: 'plaster', seg: 6, sub: 1 });
+  k.loft([[y - .01, .03], [y + .01, r * .96], [y + r * .24, r], [y + r * .52, r * .62], [y + r * .72, .02]], x, 0, z, CAP, { mat: 'plaster', seg: 12, sub: 2, glow: .35, c2: 0xff7a90 });
+  k.ball(r * .17, x + r * .35, y + r * .46, z + r * .2, 0xfff4dc, { glow: 1 });
+};
 
 function geoBody() {
-  const k = new Kit(71);
-  k.ball(1, 0, 0, -.05, FUR, { seg: 8, sx: .86, sy: .92, sz: 1.85, c2: FUR2, j: .04 });
-  k.ball(.98, 0, .28, 1.02, FUR, { seg: 7, sx: .92, sy: 1.02, sz: .95, c2: FUR2, j: .04 });
-  k.ball(.86, 0, .06, -1.22, FUR, { seg: 7, sy: .98, c2: FUR2, j: .04 });
-  for (const [x, y, z, r] of [[.1, 1.24, 1.3, .36], [-.14, 1.2, .82, .32], [.3, .86, -1.02, .3], [-.3, .84, -1.3, .34], [.04, .78, -1.68, .26], [-.5, .98, .7, .24], [.52, 1, .98, .25]]) k.blob(r, x, y, z, MOSS, { c2: MOSS2, j: .08, sy: .62 });
-  for (const [x, z] of [[.34, -1.42], [-.2, -1.68]]) { k.cyl(.04, .05, .18, x, .94, z, 0xe8ded0, { seg: 4 }); k.dome(.15, x, 1.02, z, CAP, { seg: 6, sy: .7, glow: .55 }); }
+  const k = NK();
+  k.at(0, 0, 0, 0, 1, HP);
+  k.loft([[-2.15, .08, .1, 0, -.04], [-1.92, .62, .68, 0, -.04], [-1.3, .9, .98, 0, .0], [-.4, .86, .93, 0, .05], [.45, .92, 1.03, 0, -.02], [1.12, .98, 1.17, 0, -.2], [1.62, .78, 1, 0, -.42], [1.92, .34, .5, 0, -.62]], 0, 0, 0, FUR, { mat: 'fur', c2: FUR2, seg: 22, uv: .9, j: .03, shape: (a, t) => 1 + Math.sin(a * 11 + t * 9) * .012 });
+  k.pop();
+  for (let i = 0; i < 16; i++) { const a = -1 + i / 15 * 2, x = a * .78, z = 1.32 + Math.cos(a * 2) * .12; k.tube([[x, .28 - Math.abs(a) * .16, z + .42], [x * 1.08, -.34 - Math.abs(a) * .1, z + .54], [x * 1.04, -.92 + Math.abs(a) * .2, z + .36]], [.13, .11, .008], FUR2, { mat: 'fur', seg: 5, sub: 2 }); }
+  for (const [x, y, z, r] of [[.1, 1.26, 1.3, .38], [-.14, 1.22, .82, .34], [.3, .88, -1.02, .32], [-.3, .86, -1.3, .36], [.04, .8, -1.68, .28], [-.5, 1, .7, .26], [.52, 1.02, .98, .27]]) mossPad(k, x, y, z, r);
+  for (const [x, z] of [[.34, -1.42], [-.2, -1.68]]) capOn(k, x, 1.05, z, .17);
   return k.build();
 }
 function geoTack() {
-  const k = new Kit(78);
-  k.box(1.74, .07, 1.36, 0, .86, -.2, CLOTH, { c2: 0x4f6ae0 });
-  for (const x of [-.88, .88]) { k.box(.07, .72, 1.36, x, .52, -.2, CLOTH, { c2: 0x1c2f88 }); k.box(.08, .06, 1.38, x, .18, -.2, GOLD, {}); k.box(.26, .5, .6, x * 1.15, .36, -.92, 0x6a4a2c, { c2: 0x8a6438 }); }
-  k.box(.8, .2, 1.05, 0, .98, -.2, LEATHER, { c2: 0x6f4530 }); k.box(.74, .4, .14, 0, 1.16, -.72, LEATHER, { c2: 0x6f4530 }); k.box(.38, .34, .14, 0, 1.13, .3, LEATHER, { c2: 0x6f4530 }); k.box(.4, .05, .16, 0, 1.31, .3, GOLD, {});
-  k.box(.2, .26, .2, 1.02, -.02, .08, 0xffc445, { glow: 1 }); k.box(.24, .05, .24, 1.02, .13, .08, 0x2a2030, {});
+  const k = NK(), rows = [];
+  for (let i = 0; i <= 10; i++) { const u = i / 10 * 2 - 1, x = u * .96, y = .92 - u * u * .78; rows.push([-.95, -.5, 0, .5, .55].map(z => [x * (1 + Math.abs(z + .2) * .02), y + (1 - Math.abs(u)) * .04, z - .02 + Math.sin(u * 6 + z) * .012])); }
+  k.sheet(rows, CLOTH, { mat: 'cloth', c2: 0x4f6ae0 });
+  for (const x of [-1, 1]) {
+    k.tube([[x * .88, .16, -.96], [x * .96, .15, -.45], [x * .92, .15, .06], [x * .86, .16, .54]], .022, GOLD, { mat: 'metal', seg: 5 });
+    k.loft([[.04, .22, .13], [.2, .28, .17], [.5, .28, .17], [.62, .24, .14]], x * 1.08, 0, -.92, 0x6a4a2c, { mat: 'fur', c2: 0x8a6438, seg: 12, sub: 2 });
+    k.sheet([[[x * 1.0, .63, -1.12], [x * 1.22, .64, -.92], [x * 1.0, .63, -.72]], [[x * 1.06, .4, -1.14], [x * 1.33, .42, -.92], [x * 1.06, .4, -.7]]], 0x5a3c26, { mat: 'fur' });
+    k.ball(.035, x * 1.34, .42, -.92, GOLD, { mat: 'metal' });
+    k.tube([[x * .44, 1.02, -.15], [x * .9, .7, -.13], [x * .98, .28, -.12]], .028, LEATHER, { mat: 'fur', seg: 4 });
+    k.torus(.085, .018, x * .98, .16, -.12, GOLD, { ry: HP, mat: 'metal', seg: 10 });
+  }
+  k.at(0, 0, 0, 0, 1, HP);
+  k.loft([[-.78, .1, .08, 0, -1.1], [-.62, .42, .2, 0, -1.06], [-.2, .44, .16, 0, -.98], [.2, .4, .16, 0, -.98], [.46, .34, .2, 0, -1.06], [.58, .08, .08, 0, -1.14]], 0, -.2, 0, LEATHER, { mat: 'fur', c2: 0x6f4530, seg: 14 });
+  k.pop();
+  k.tube([[-.36, 1.08, -.72], [0, 1.27, -.78], [.36, 1.08, -.72]], .07, 0x6f4530, { mat: 'fur', seg: 6 });
+  k.tube([[0, 1.1, .27], [0, 1.3, .33], [0, 1.42, .24]], [.1, .07, .05], LEATHER, { mat: 'fur', seg: 7 });
+  k.ball(.075, 0, 1.44, .22, GOLD, { mat: 'metal' });
+  k.tube([[1.02, .2, .08], [1.05, .32, .08], [1.02, .42, .08]], .018, 0x2a2030, { mat: 'metal', seg: 4 });
+  k.loft([[-.14, .1], [-.09, .13], [.1, .11], [.14, .07]], 1.02, .05, .08, 0xffc445, { glow: 1, seg: 9, sub: 1 });
+  k.loft([[.14, .13], [.18, .14], [.26, .03]], 1.02, .05, .08, 0x2a2030, { mat: 'metal', seg: 9, sub: 1 });
+  k.loft([[-.2, .03], [-.17, .14], [-.14, .11]], 1.02, .05, .08, 0x2a2030, { mat: 'metal', seg: 9, sub: 1 });
   return k.build();
 }
 function geoNeck() {
-  const k = new Kit(72);
-  k.cyl(.42, .66, 1.55, 0, .62, .34, FUR, { rx: .52, seg: 7, c2: FUR2, j: .04 });
-  k.box(.2, 1.24, .46, 0, .78, -.03, MOSS, { rx: .52, c2: MOSS2, j: .1 });
-  k.cone(.3, .9, 0, .04, .72, DARK, { rx: Math.PI - .2, seg: 5 });
+  const k = NK();
+  k.tube([[0, -.42, -.28], [0, .12, .08], [0, .68, .42], [0, 1.28, .82]], [.86, .68, .5, .4], FUR, { mat: 'fur', c2: FUR2, seg: 16, uv: .9, sub: 3 });
+  for (let i = 0; i < 13; i++) { const t = i / 12, y = -.1 + t * 1.26, z = -.5 + t * 1.1, side = i % 2 ? .05 : -.05; k.tube([[side, y, z], [side * 1.6, y + .12, z - .22], [side, y + .06, z - .42]], [.13, .11, .008], i % 3 ? MOSS : MOSS2, { mat: 'leaf', seg: 5, sub: 2 }); }
+  for (let i = 0; i < 6; i++) { const u = i / 5 * 2 - 1; k.tube([[u * .22, .32, .7], [u * .25, -.1, .86], [u * .15, -.66, .84]], [.12, .09, .006], DARK, { mat: 'fur', seg: 5, sub: 2 }); }
   return k.build();
 }
 function geoHead() {
-  const k = new Kit(73);
-  k.box(.66, .64, .92, 0, .06, .2, FUR, { c2: FUR2, j: .03 });
-  k.box(.48, .44, .88, 0, -.13, .9, FUR2, { c2: FUR, j: .03 });
-  k.box(.42, .22, .12, 0, -.02, 1.36, 0x1b1410, {});
-  k.box(.3, .05, .1, 0, -.27, 1.28, 0x1b1410, {});
+  const k = NK();
+  k.at(0, 0, 0, 0, 1, HP);
+  k.loft([[-.38, .16, .2, 0, .02], [-.14, .36, .4, 0, 0], [.22, .37, .38, 0, .02], [.56, .29, .3, 0, .09], [.94, .25, .26, 0, .15], [1.24, .26, .22, 0, .17], [1.42, .19, .15, 0, .16], [1.5, .05, .05, 0, .14]], 0, 0, 0, FUR, { mat: 'fur', c2: FUR2, seg: 16, uv: .9 });
+  k.loft([[.72, .2, .05, 0, .36], [1.18, .22, .055, 0, .34], [1.38, .15, .05, 0, .3], [1.44, .03, .03, 0, .28]], 0, 0, 0, FUR2, { mat: 'fur', seg: 10 });
+  k.pop();
+  k.ball(.17, 0, -.1, 1.42, 0x1b1410, { mat: 'skin', sx: 1.3, sy: .72 });
+  k.tube([[-.22, -.3, .98], [0, -.33, 1.34], [.22, -.3, .98]], .012, 0x120c0a, { mat: 'plain', seg: 4 });
   for (const x of [-1, 1]) {
-    k.box(.09, .1, .08, x * .34, .17, .42, 0xffc445, { glow: 1 });
-    k.cone(.17, .56, x * .48, .32, -.14, FUR2, { seg: 3, rz: -x * 1.1 });
+    k.ball(.058, x * .11, -.04, 1.54, 0x050404, { mat: 'plain', sz: .6, sy: .75 });
+    k.ball(.1, x * .33, .17, .42, 0x120c0a, { mat: 'plain', sz: .72 });
+    k.ball(.07, x * .36, .17, .46, 0xffc445, { glow: 1, sz: .7 });
+    k.ball(.03, x * .405, .18, .49, 0x0c0806, { mat: 'plain' });
+    k.tube([[x * .24, .28, .34], [x * .36, .32, .42], [x * .44, .26, .54]], [.015, .045, .01], DARK, { mat: 'fur', seg: 4 });
+    const ear = (u, v) => [x * (.32 + u * .6), .34 + u * .32 + v * Math.sin(u * Math.PI) * .13, -.14 - u * .18 + v * Math.sin(u * Math.PI) * .03];
+    k.sheet([0, .25, .5, .75, 1].map(u => [ear(u, -1), ear(u, 0), ear(u, 1)]), FUR2, { mat: 'fur', c2: 0xc89a78 });
     const m = ([a, b, c]) => [x * a, b, c];
-    limb(k, m([.26, .28, -.1]), m([.72, .82, -.18]), .13, .095, ANT);
-    limb(k, m([.72, .82, -.18]), m([1.02, 1.3, -.06]), .095, .075, ANT);
-    limb(k, m([1.02, 1.3, -.06]), m([1.16, 1.78, .24]), .075, .05, ANT2);
-    for (const [a, b] of [[[.6, .66, -.14], [.88, .94, .54]], [[.86, 1.06, -.12], [1.24, 1.62, -.56]], [[.98, 1.28, -.07], [.76, 1.98, -.24]], [[1.06, 1.5, .06], [1.56, 2.02, -.02]], [[1.16, 1.78, .24], [.98, 2.38, .34]], [[1.16, 1.78, .24], [1.54, 2.26, .58]]]) limb(k, m(a), m(b), .06, .014, ANT2);
-    k.box(.07, .32, .46, x * 1.03, 1.42, -.02, ANT, { rz: -x * .42, c2: ANT2 });
-    for (const [a, b, c, r] of [[.82, 1.02, -.04, .17], [1.14, 1.5, -.2, .13], [1.2, 1.86, .16, .1]]) { k.cyl(.035, .045, .16, x * a, b - .08, c, 0xe8ded0, { seg: 4 }); k.dome(r, x * a, b, c, CAP, { seg: 6, sy: .72, glow: .7 }); k.ball(.035, x * a, b + r * .66, c, 0xfff4dc, { seg: 4, glow: 1 }); }
-    k.box(.09, .42, .09, x * .92, .72, -.2, MOSS, { c2: MOSS2 }); k.box(.07, .3, .07, x * 1.1, 1.12, -.14, MOSS2, {});
+    k.tube([m([.22, .24, -.08]), m([.5, .52, -.14]), m([.74, .84, -.18]), m([1.02, 1.3, -.06]), m([1.16, 1.78, .24])], [.135, .115, .1, .08, .05], ANT, { mat: 'bone', seg: 8, sub: 3 });
+    for (const [a, b] of [[[.6, .66, -.14], [.88, .94, .54]], [[.86, 1.06, -.12], [1.24, 1.62, -.56]], [[.98, 1.28, -.07], [.76, 1.98, -.24]], [[1.06, 1.5, .06], [1.56, 2.02, -.02]], [[1.16, 1.78, .24], [.98, 2.38, .34]], [[1.16, 1.78, .24], [1.54, 2.26, .58]]]) limb(k, m(a), m(b), .062, .01, ANT2);
+    const palm = (u, v) => m([.84 + u * .32 + v * .13, 1.16 + u * .62 + v * .02, -.1 + u * .24 - v * .3]);
+    k.sheet([0, .33, .66, 1].map(u => [palm(u, -1), palm(u, 0), palm(u, 1)]), ANT, { mat: 'bone', c2: ANT2 });
+    for (const [a, b, c, r] of [[.82, 1.06, -.04, .17], [1.14, 1.54, -.2, .13], [1.2, 1.9, .16, .1]]) capOn(k, x * a, b, c, r);
+    mossPad(k, x * .92, .86, -.18, .14); mossPad(k, x * 1.08, 1.24, -.13, .1);
   }
+  mossPad(k, 0, .42, -.12, .24);
   return k.build();
 }
 function geoLegUp(back) {
-  const k = new Kit(74 + back);
-  k.cyl(back ? .4 : .32, .19, 1.08, 0, -.5, back ? -.04 : 0, FUR, { seg: 6, c2: FUR2 });
+  const k = NK();
+  if (back) k.tube([[0, .18, .12], [0, -.14, .06], [0, -.56, -.14], [0, -.98, -.08]], [.5, .44, .27, .18], FUR, { mat: 'fur', c2: FUR2, seg: 12, uv: .9, sub: 3 });
+  else k.tube([[0, .2, -.04], [0, -.2, .02], [0, -.66, .02], [0, -1, 0]], [.4, .35, .22, .17], FUR, { mat: 'fur', c2: FUR2, seg: 12, uv: .9, sub: 3 });
+  k.ball(.19, 0, -1.02, 0, FUR2, { mat: 'fur', sy: 1.12 });
   return k.build();
 }
 function geoLegLow() {
-  const k = new Kit(76);
-  k.cyl(.17, .12, .94, 0, -.46, 0, DARK, { seg: 5, c2: FUR });
-  k.ball(.19, 0, -.74, 0, FUR2, { seg: 5, sy: .8 });
-  k.cyl(.17, .23, .2, 0, -1, .03, 0x171210, { seg: 6 });
+  const k = NK();
+  k.tube([[0, .02, 0], [0, -.3, -.015], [0, -.66, -.01], [0, -.84, .01]], [.17, .13, .105, .12], DARK, { mat: 'fur', c2: FUR, seg: 10, uv: 1, sub: 2 });
+  k.ball(.15, 0, -.76, .01, FUR2, { mat: 'fur', sy: .85 });
+  k.loft([[-1.11, .25, .31, 0, .08], [-1.07, .26, .32, 0, .08], [-.97, .21, .25, 0, .05], [-.87, .15, .17, 0, .02]], 0, 0, 0, 0x171210, { mat: 'bone', seg: 12, sub: 2 });
+  k.box(.022, .19, .34, 0, -1.02, .2, 0x050404, { mat: 'plain', sharp: true });
+  for (const x of [-1, 1]) k.ball(.05, x * .1, -.82, -.17, 0x171210, { mat: 'bone', sy: 1.3 });
   return k.build();
 }
 function geoTail() {
-  const k = new Kit(77);
-  k.cone(.24, .72, 0, -.3, -.04, FUR2, { rx: Math.PI, seg: 5, c2: DARK });
-  k.blob(.14, 0, -.02, -.02, MOSS, {});
+  const k = NK();
+  k.tube([[0, .05, .05], [0, -.1, -.14], [0, -.42, -.2], [0, -.8, -.14]], [.14, .22, .19, .012], FUR2, { mat: 'fur', c2: DARK, seg: 9, sub: 3 });
+  mossPad(k, 0, .02, -.03, .14);
   return k.build();
 }
 const part = (parent, geo, x, y, z) => {
   const g = new THREE.Group(); g.position.set(x, y, z);
-  if (geo) { const m = new THREE.Mesh(geo, MAT.solid); m.frustumCulled = false; g.add(m); }
+  if (geo) { const m = new THREE.Mesh(geo, MAT.solid); m.frustumCulled = false; m.castShadow = true; m.receiveShadow = true; g.add(m); }
   parent.add(g); return g;
 };
 

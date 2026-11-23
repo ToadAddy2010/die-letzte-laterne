@@ -125,6 +125,11 @@ export class Sky {
     this.hemi = new THREE.HemisphereLight(0x8d9cff, 0x1a1036, 1.6);
     this.dir = new THREE.DirectionalLight(0xa9b4ff, 2);
     scene.add(this.hemi, this.dir, this.dir.target);
+    this.dir.castShadow = !G.settings.low;
+    this.dir.shadow.mapSize.set(2048, 2048);
+    Object.assign(this.dir.shadow.camera, { left: -85, right: 85, top: 85, bottom: -85, near: 10, far: 900 });
+    this.dir.shadow.camera.updateProjectionMatrix();
+    this.dir.shadow.bias = -.0006; this.dir.shadow.normalBias = .16; this.dir.shadow.radius = 2.2;
     scene.fog = new THREE.FogExp2(0x151650, .0034);
     this.fogTarget = new THREE.Color(0x151650);
     this.day = 0; this.sunDir = new THREE.Vector3(); this.moonDir = new THREE.Vector3();
@@ -161,8 +166,10 @@ export class Sky {
     const main = s > 0 ? this.sunDir : this.moonDir;
     this.dir.color.set(0xa9b4ff).lerp(new THREE.Color(0xffd2a0), day);
     this.dir.intensity = lerp(2.3, 2.7, day);
-    this.dir.position.copy(target).addScaledVector(main, 400);
-    this.dir.target.position.copy(target);
+    // Das Schattenraster rastet ein, damit Schattenkanten beim Laufen nicht flimmern.
+    const snapG = 170 / 2048;
+    this.dir.target.position.set(Math.round(target.x / snapG) * snapG, Math.round(target.y / snapG) * snapG, Math.round(target.z / snapG) * snapG);
+    this.dir.position.copy(this.dir.target.position).addScaledVector(main, 400);
     G.retro.u.warm.value = day;
     const W = MAT.water.uniforms;
     W.uSky.value.copy(this.fogTarget).lerp(u.top.value, .35); W.uDeep.value.set(0x0a1f64).lerp(tmpC.set(0x1250b4), day);

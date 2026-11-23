@@ -9,10 +9,10 @@ import { NPCS } from '../data/npcs.js';
 import { BUILDING_NAMES, FAMILIES } from '../data/houses.js';
 
 const HOUSES = [];
-const WIN = 0xffc25a, WIN2 = 0xff7a3a, WINB = 0x7fd8ff;
+const WIN = 0xffc25a, WIN2 = 0xff7a3a, WINB = 0x7fd8ff, GOLD_C = 0xd8a33c, LOD = { lod: true };
 const STY = {
   pilz: { h: 'shroom', stone: 0x7c78b8, plaza: 0x5e5a9a, lamp: 0xffb845 },
-  forest: { h: 'timber', wall: 0x8a7458, beam: 0x2f2028, roof: 0x24645a, roof2: 0x35507a, stone: 0x4e4a70, plaza: 0x46425f, lamp: 0xffb845 },
+  forest: { h: 'timber', wall: 0xbfae94, beam: 0x2f2028, roof: 0x24645a, roof2: 0x35507a, stone: 0x4e4a70, plaza: 0x46425f, lamp: 0xffb845 },
   moor: { h: 'bone', wall: 0x4a4658, beam: 0x25202e, roof: 0x3a3048, roof2: 0x4a3a30, stone: 0x45405c, plaza: 0x3c3850, lamp: 0x7ff2c8 },
   desert: { h: 'adobe', wall: 0xd9a766, beam: 0x8a5230, roof: 0xe8c07e, roof2: 0x3fa7a0, stone: 0xb8854e, plaza: 0xc59a62, lamp: 0xffd070 },
   frost: { h: 'frost', wall: 0x6a78b0, beam: 0x2d3560, roof: 0xdde8ff, roof2: 0xbcd0ff, stone: 0x5564a8, plaza: 0x7f90cc, lamp: 0x9fe4ff },
@@ -20,108 +20,185 @@ const STY = {
   ash: { h: 'ash', wall: 0x2c2436, beam: 0x151020, roof: 0x41243a, roof2: 0x241a30, stone: 0x2a2238, plaza: 0x2a2234, lamp: 0xff5a2a },
 };
 
+const HP = Math.PI / 2, FRAME = 0x2a1c20, IRON = 0x24222c;
+const fine = (k, fn) => { k.noLo = true; fn(); k.noLo = false; };
+
 function windows(k, w, h, z, col = WIN, n = 2) {
   for (let i = 0; i < n; i++) {
     const x = n === 1 ? 0 : -w / 2 + (i + .5) * (w / n);
-    k.box(1, 1.3, .1, x, h, z, col, { glow: 1, j: .2 });
-    k.box(1.25, .13, .14, x, h + .72, z, 0x2a1c20, {}); k.box(1.25, .13, .14, x, h - .72, z, 0x2a1c20, {}); k.box(.1, 1.3, .14, x, h, z + .02, 0x2a1c20, {});
+    k.box(1, 1.3, .1, x, h, z, col, { glow: 1, j: .12, mat: 'plain', sharp: true });
+    k.box(1.32, .15, .22, x, h + .72, z + .02, FRAME, { mat: 'wood' });
+    k.box(1.52, .14, .36, x, h - .73, z + .07, 0x4a3428, { mat: 'wood' });
+    for (const q of [-.58, .58]) k.box(.14, 1.4, .2, x + q, h, z + .02, FRAME, { mat: 'wood' });
+    fine(k, () => {
+      k.box(.055, 1.3, .13, x, h, z + .03, FRAME, { mat: 'wood', sharp: true });
+      k.box(1, .055, .13, x, h + .1, z + .03, FRAME, { mat: 'wood', sharp: true });
+      for (const q of [-1, 1]) {
+        k.box(.46, 1.36, .05, x + q * .9, h, z + .11, 0x3c2c34, { mat: 'wood', ry: q * .38 });
+        for (const y of [-.42, .42]) k.box(.4, .045, .025, x + q * .88, h + y, z + .16, IRON, { mat: 'metal', ry: q * .38, sharp: true });
+      }
+    });
   }
 }
 function door(k, z, col = 0x4a2c20, w = 1.8, h = 3) {
-  k.box(w, h, .2, 0, h / 2, z, col, {}); k.box(w + .4, .25, .3, 0, h + .1, z, 0x2a1c20, {});
-  k.ball(.11, w * .3, h * .46, z + .14, 0xffd070, { seg: 4, glow: 1 });
+  const rect = h - w * .5;
+  k.box(w, rect, .16, 0, rect / 2, z, col, { mat: 'wood' });
+  k.cyl(w * .5, w * .5, .16, 0, rect, z, col, { rx: HP, seg: 14, mat: 'wood' });
+  k.torus(w * .57, .13, 0, rect, z + .04, 0x4a4250, { arc: Math.PI, seg: 14, mat: 'stone' });
+  for (const x of [-1, 1]) k.box(.27, rect, .3, x * w * .57, rect / 2, z + .04, 0x4a4250, { mat: 'stone' });
+  k.box(w + .9, .16, .9, 0, .08, z + .4, 0x5a5468, { mat: 'stone' });
+  fine(k, () => {
+    for (const y of [.26, .68]) { k.box(w * .96, .09, .035, 0, rect * y, z + .09, IRON, { mat: 'metal', bevel: .012 }); for (const x of [-.36, 0, .36]) k.ball(.035, x * w, rect * y, z + .115, 0x8a8a98, { mat: 'metal' }); }
+    for (let i = 1; i < 4; i++) k.box(.018, h - .1, .012, -w / 2 + i * w / 4, (h - .1) / 2, z + .083, 0x1a1016, { mat: 'plain', sharp: true });
+    k.torus(.09, .017, w * .3, h * .36, z + .13, 0xffd070, { seg: 10, mat: 'metal' });
+  });
+  k.ball(.06, w * .3, h * .4, z + .12, 0xffd070, { mat: 'metal', glow: .4 });
+}
+/** Satteldach mit Giebel, Firstbalken und Ortgang. */
+function pitched(k, w, rh, d, y, col, wall, beam, o = {}) {
+  k.prism(w, rh, d, 0, y, 0, col, { j: .1, gc: wall, uv: .24, ...o });
+  const a = Math.atan2(rh, w / 2), L = Math.hypot(w / 2, rh);
+  k.box(.3, .28, d + .25, 0, y + rh + .02, 0, beam, { mat: 'wood' });
+  for (const z of [-d / 2 - .03, d / 2 + .03]) for (const s of [-1, 1]) k.box(L + .25, .24, .13, s * w / 4, y + rh / 2 + .04, z, beam, { mat: 'wood', rz: -s * a });
+  for (const s of [-1, 1]) k.box(.14, .16, d + .2, s * w / 2, y + .02, 0, beam, { mat: 'wood' });
+  fine(k, () => { for (let i = 1; i < 5; i++) for (const s of [-1, 1]) k.box(.09, .2, .4, s * (w / 2) * (i / 5), y - .03, d / 2 - .1, beam, { mat: 'wood' }); });
+}
+function chimney(k, x, y, z, h, c = 0x6a4a44) {
+  k.box(1.15, h, 1.15, x, y + h / 2, z, c, { mat: 'brick', uv: .55 });
+  k.box(1.42, .2, 1.42, x, y + h, z, 0x4a4250, { mat: 'stone' });
+  for (const q of [-.2, .2]) k.cyl(.15, .17, .5, x + q, y + h + .34, z, 0x7a4a38, { seg: 8, mat: 'brick' });
+}
+/** Fachwerk auf allen vier Seiten. */
+function timber(k, W, H, y0, D, c) {
+  for (const [ry, a, b] of [[0, W, D], [Math.PI, W, D], [HP, D, W], [-HP, D, W]]) {
+    k.at(0, y0, 0, ry);
+    const zz = b / 2 + .05, n = Math.max(2, Math.round(a / 2.5)), cw = a / n;
+    for (let i = 0; i <= n; i++) k.box(.3, H, .16, -a / 2 + i * cw, H / 2, zz, c, { mat: 'wood' });
+    k.box(a + .3, .26, .18, 0, .13, zz, c, { mat: 'wood' }); k.box(a + .3, .26, .18, 0, H - .13, zz, c, { mat: 'wood' });
+    fine(k, () => { const dg = Math.atan2(cw, H - .4), len = Math.hypot(cw, H - .4); for (let i = 0; i < n; i++) if (i % 2 === 0 || n < 3) k.box(.16, len, .12, -a / 2 + (i + .5) * cw, H / 2, zz, c, { mat: 'wood', rz: (i % 4 ? 1 : -1) * dg }); });
+    k.pop();
+  }
 }
 function shroomHouse(k, r) {
-  const R = r.range(4, 5.8), h = r.range(5, 7), cap = r.pick([[0x7a2fb5, 0xc24ad0], [0xb82f4d, 0xff6a7d], [0x3347bd, 0x5f86ff], [0xc95a24, 0xffa640]]);
-  k.cyl(R * .9, R, h, 0, h / 2, 0, 0xe6dcc8, { seg: 10, c2: 0xc9b9a8 });
-  k.dome(R * 1.75, 0, h - .3, 0, cap[0], { sy: .9, seg: 12, c2: cap[1] });
-  k.cyl(R * 1.72, R * 1.72, .3, 0, h - .3, 0, 0xf6e4ff, { seg: 12, glow: .3 });
-  for (let i = 0; i < 8; i++) { const a = i * 2.4, q = R * (.5 + (i % 3) * .3); k.ball(.55, Math.cos(a) * q, h + R * 1.32 - q * .62, Math.sin(a) * q, 0xfff4dc, { seg: 5, glow: .6 }); }
-  k.at(0, 0, R * .95); door(k, 0, 0x6b3a26); windows(k, R * 1.5, h * .68, .02, WIN, 2); k.pop();
-  k.box(1.1, 2.3, 1.1, R * .5, h + R * .95, -R * .3, 0x7a6a78, {});
+  const R = r.range(4, 5.8), h = r.range(5, 7), cap = r.pick([[0x7a2fb5, 0xc24ad0], [0xb82f4d, 0xff6a7d], [0x3347bd, 0x5f86ff], [0xc95a24, 0xffa640]]), CR = R * 1.78;
+  k.loft([[-.2, R * 1.14], [.45, R * 1.04], [h * .5, R * .93], [h * .82, R * .9], [h + .1, R]], 0, 0, 0, 0xe6dcc8, { mat: 'plaster', c2: 0xc9b9a8, seg: 22, fold: .018, foldN: 11, uv: .3 });
+  k.loft([[0, R * 1.2], [.3, R * 1.16], [.62, R * 1.04]], 0, 0, 0, 0x6c6890, { mat: 'stone', seg: 22, sub: 2 });
+  k.loft([[h - .5, R * .6], [h - .3, CR * .96], [h - .05, CR], [h + CR * .34, CR * .86], [h + CR * .62, CR * .54], [h + CR * .84, CR * .2], [h + CR * .9, .02]], 0, 0, 0, cap[0], { mat: 'plaster', c2: cap[1], seg: 30, uv: .24, shape: a => 1 + Math.sin(a * 5 + 1) * .016 });
+  k.loft([[h - .52, R * .58], [h - .31, CR * .95]], 0, 0, 0, 0xf6e4ff, { mat: 'cloth', seg: 30, sub: 1, glow: .28 });
+  fine(k, () => { for (let i = 0; i < 40; i++) { const a = i / 40 * TAU; k.box(.05, .08, CR * .62, Math.cos(a) * CR * .63, h - .42, Math.sin(a) * CR * .63, 0xc8b0dc, { mat: 'plain', ry: -a + HP, sharp: true }); } });
+  for (let i = 0; i < 10; i++) { const a = i * 2.4, q = CR * (.26 + (i % 4) * .17), y = h + CR * .9 * Math.sqrt(Math.max(.03, 1 - (q / CR) ** 2)) - .22; k.ball(.5 + (i % 3) * .14, Math.cos(a) * q, y, Math.sin(a) * q, 0xfff4dc, { glow: .55, sy: .6 }); }
+  k.at(0, 0, R * 1.0); door(k, .02, 0x6b3a26); windows(k, R * 1.5, h * .66, -.06, WIN, 2); k.pop();
+  k.tube([[R * .5, h + R * .7, -R * .3], [R * .58, h + R * 1.2, -R * .34], [R * .7, h + R * 1.6, -R * .3]], [.55, .5, .46], 0x7a6a78, { mat: 'brick', seg: 10 });
+  k.torus(.5, .11, R * .7, h + R * 1.62, -R * .3, 0x4a3a44, { rx: HP, mat: 'metal', seg: 12 });
   return [R + .6, R + .6];
 }
 function timberHouse(k, r, s) {
-  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(4, 5), up = r() < .55 ? r.range(3, 3.6) : 0, roof = r() < .6 ? s.roof : s.roof2, H = h + up;
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: s.wall }); k.box(w + .5, .4, d + .5, 0, .2, 0, s.stone, {});
-  if (up) k.box(w + .7, up, d + .7, 0, h + up / 2, 0, s.wall, {});
-  for (const x of [-w / 2, w / 2, 0]) k.box(.34, h, .2, x, h / 2, d / 2 + .05, s.beam, {});
-  for (const y of [h, H]) k.box(w + .9, .32, d + .9, 0, y, 0, s.beam, {});
-  if (up) for (let x = -w / 2; x <= w / 2; x += w / 3) { k.box(.28, up, .16, x, h + up / 2, d / 2 + .42, s.beam, {}); k.box(.2, up * 1.2, .14, x + w / 6, h + up / 2, d / 2 + .42, s.beam, { rz: x > 0 ? .55 : -.55 }); }
-  const rh = w * .62;
-  k.prism(w + 1.5, rh, d + 1.3, 0, H, 0, roof, { j: .16 });
-  for (let i = 0; i < 4; i++) k.box(w + 1.55, .16, .3, 0, H + i * rh / 4 + .15, d / 2 + .61 - i * .02, 0x000000, { j: 0 });
-  k.box(1.1, 3.6, 1.1, w * .28, H + rh * .62, -d * .24, s.stone, {});
-  k.at(0, 0, d / 2 + .12); door(k, 0); windows(k, w * .8, h * .62, 0, WIN, 2); if (up) windows(k, w * .8, h + up * .52, .36, WIN, 3); k.pop();
+  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(4, 5), up = r() < .55 ? r.range(3, 3.6) : 0, roof = r() < .6 ? s.roof : s.roof2, H = h + up, rh = w * .62;
+  k.box(w + .5, .85, d + .5, 0, .38, 0, s.stone, { mat: 'stone', uv: .42 });
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { mat: 'plaster', bevel: .04 }); timber(k, w, h - .75, .75, d, s.beam);
+  if (up) {
+    k.box(w + .7, up, d + .7, 0, h + up / 2, 0, s.wall, { mat: 'plaster', bevel: .04 }); timber(k, w + .7, up, h, d + .7, s.beam);
+    fine(k, () => { for (let x = -w / 2; x <= w / 2 + .01; x += w / 4) k.box(.2, .55, .5, x, h - .22, d / 2 + .2, s.beam, { mat: 'wood', rx: .55 }); });
+  }
+  pitched(k, w + 1.5, rh, d + 1.3, H + .1, roof, s.wall, s.beam);
+  chimney(k, w * .28, H + rh * .35, -d * .24, rh * .72 + 1.4, s.stone);
+  k.at(0, 0, d / 2 + .12); door(k, .04); windows(k, w * .8, h * .62, .02, WIN, 2); if (up) windows(k, w * .8, h + up * .52, .4, WIN, 3); k.pop();
   return [w / 2 + .8, d / 2 + .8];
 }
 function boneHouse(k, r, s) {
-  const w = r.range(7, 9), d = r.range(7, 10), h = r.range(4, 5);
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x62586e }); k.prism(w + 1.2, w * .68, d + 1, 0, h, 0, s.roof, { j: .22 });
-  for (let z = -d / 2; z <= d / 2; z += 1.8) for (const sd of [-1, 1]) k.box(.22, w * .78, .22, sd * w * .26, h + w * .33, z, 0xd9d3bc, { rz: sd * .63 });
-  k.ball(.8, 0, h + .8, d / 2 + .3, 0xe8e2cc, { seg: 6 }); k.box(.25, .25, .1, -.28, h + .9, d / 2 + 1, 0x7ff2c8, { glow: 1 }); k.box(.25, .25, .1, .28, h + .9, d / 2 + 1, 0x7ff2c8, { glow: 1 });
-  k.at(0, 0, d / 2 + .1); door(k, 0, 0x2a2230); windows(k, w * .84, h * .55, 0, 0x7ff2c8, 2); k.pop();
+  const w = r.range(7, 9), d = r.range(7, 10), h = r.range(4, 5), rh = w * .68;
+  k.box(w + .4, .7, d + .4, 0, .32, 0, s.stone, { mat: 'stone' });
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x62586e, mat: 'stone', uv: .36, bevel: .05 }); pitched(k, w + 1.2, rh, d + 1, h, s.roof, s.wall, s.beam, { mat: 'cloth', uv: .45 });
+  for (let z = -d / 2; z <= d / 2; z += 1.8) for (const sd of [-1, 1]) k.tube([[sd * .1, h + rh + .18, z], [sd * w * .3, h + rh * .68, z], [sd * (w * .5 + .25), h + rh * .12, z], [sd * (w * .5 + .62), h - .36, z]], [.09, .15, .13, .012], 0xd9d3bc, { mat: 'bone', seg: 6, sub: 3 });
+  k.loft([[-.55, .26, .3, 0, .22], [-.3, .5, .6, 0, .15], [.1, .78, .82], [.5, .74, .78], [.82, .02, .02]], 0, h + .9, d / 2 + .3, 0xe8e2cc, { mat: 'bone', seg: 16 });
+  for (const x of [-1, 1]) { k.ball(.25, x * .3, h + .98, d / 2 + .98, 0x14101e, { mat: 'plain', sz: .55 }); k.ball(.12, x * .3, h + .98, d / 2 + 1.08, 0x7ff2c8, { glow: 1 }); }
+  k.at(0, 0, d / 2 + .1); door(k, .03, 0x2a2230); windows(k, w * .84, h * .55, .02, 0x7ff2c8, 2); k.pop();
   return [w / 2 + .6, d / 2 + .6];
 }
 function adobeHouse(k, r, s) {
   const w = r.range(7, 11), d = r.range(7, 10), h = r.range(4, 6.5), dome = r() < .6;
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0xecc98a });
-  k.box(w + .5, .34, d + .5, 0, h, 0, s.beam, {});
-  if (dome) k.dome(Math.min(w, d) * .44, 0, h, 0, s.roof2, { seg: 10, c2: 0x7fe0cc });
-  else for (let x = -w / 2; x <= w / 2; x += 1.5) { k.box(.75, .75, .5, x, h + .5, d / 2, s.wall, {}); k.box(.75, .75, .5, x, h + .5, -d / 2, s.wall, {}); }
+  k.box(w + .4, .55, d + .4, 0, .25, 0, s.stone, { mat: 'stone', bevel: .18 });
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0xecc98a, mat: 'plaster', bevel: .3, uv: .24 });
+  k.box(w + .5, .34, d + .5, 0, h, 0, s.beam, { mat: 'plaster', bevel: .14 });
+  fine(k, () => { for (let x = -w / 2 + .6; x < w / 2; x += 1.1) for (const z of [d / 2 + .34, -d / 2 - .34]) k.cyl(.11, .11, .85, x, h - .42, z, 0x6a4028, { rx: HP, seg: 7, mat: 'wood' }); });
+  if (dome) {
+    const R = Math.min(w, d) * .44;
+    k.cyl(R * 1.04, R * 1.08, .4, 0, h + .3, 0, s.wall, { seg: 24, mat: 'plaster' });
+    k.loft([[h + .45, R], [h + .45 + R * .42, R * .95], [h + .45 + R * .8, R * .62], [h + .45 + R * 1.04, R * .22], [h + .45 + R * 1.22, .03]], 0, 0, 0, s.roof2, { seg: 28, c2: 0x7fe0cc, mat: 'tile', uv: .5 });
+    k.ball(.2, 0, h + .55 + R * 1.22, 0, GOLD_C, { mat: 'metal' }); k.cone(.09, .7, 0, h + .9 + R * 1.22, 0, GOLD_C, { seg: 8, mat: 'metal' });
+  } else for (let x = -w / 2; x <= w / 2; x += 1.5) { for (const z of [d / 2, -d / 2]) k.loft([[h + .15, .38, .26], [h + .62, .36, .24], [h + .92, .2, .16], [h + 1.02, .02, .02]], x, 0, z, s.wall, { mat: 'plaster', seg: 8, sub: 2 }); }
   k.at(0, 0, d / 2 + .1);
-  k.box(2.2, 3, .2, 0, 1.5, 0, 0x4a2c20, {}); k.cyl(1.1, 1.1, .2, 0, 3, 0, 0x4a2c20, { rx: 1.57, seg: 8 });
-  windows(k, w * .84, h * .62, 0, WIN, 2);
-  k.box(1, h * .7, .08, -w * .32, h * .55, .08, r() < .5 ? 0xb8302c : 0x2f6fb0, {}); k.pop();
+  door(k, .05, 0x4a2c20, 2.1, 3.7);
+  windows(k, w * .84, h * .62, .02, WIN, 2);
+  const banner = r() < .5 ? 0xb8302c : 0x2f6fb0, rows = []; for (let i = 0; i <= 5; i++) { const t = i / 5, y = h * .9 - t * h * .62; rows.push([-1, 0, 1].map(u => [-w * .32 + u * .5 * (1 - (t > .85 ? (t - .85) * 3 : 0)), y, .22 + Math.sin(t * 7 + u) * .05])); }
+  k.sheet(rows, banner, { mat: 'cloth' }); k.box(1.3, .1, .1, -w * .32, h * .91, .2, 0x6a4028, { mat: 'wood' });
+  k.pop();
   return [w / 2 + .5, d / 2 + .5];
 }
 function frostHouse(k, r, s) {
-  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(4, 5.2);
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x8c9ad0 }); k.box(w + .5, 1, d + .5, 0, .5, 0, s.stone, {});
-  k.prism(w + 1.4, w * .95, d + 1.3, 0, h, 0, s.roof, { j: .08 });
-  for (let x = -w / 2; x < w / 2; x += .9) k.cone(.16, r.range(.5, 1.5), x, h - .55, d / 2 + .62, 0xbfe4ff, { seg: 4, rx: Math.PI, glow: .3 });
-  k.box(1, 3.2, 1, w * .26, h + w * .6, 0, s.stone, {});
-  k.at(0, 0, d / 2 + .1); door(k, 0, 0x2d3560); windows(k, w * .8, h * .62, 0, WIN, 2); k.pop();
+  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(4, 5.2), rh = w * .95;
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x8c9ad0, mat: 'wood', uv: .34, bevel: .05 }); k.box(w + .5, 1, d + .5, 0, .5, 0, s.stone, { mat: 'stone', uv: .42 });
+  for (const x of [-1, 1]) for (const z of [-1, 1]) k.cyl(.26, .3, h, x * (w / 2 + .05), h / 2, z * (d / 2 + .05), s.beam, { seg: 8, mat: 'bark' });
+  pitched(k, w + 1.4, rh, d + 1.3, h, s.roof, s.wall, s.beam, { mat: 'plaster', uv: .3 });
+  fine(k, () => { for (const sd of [-1, 1]) for (let z = -d / 2; z < d / 2; z += .8) k.ball(.34, sd * (w * .34), h + rh * .32, z + (Math.sin(z * 7.3) + 1) * .15, 0xf4f8ff, { mat: 'plaster', sy: .4 }); });
+  for (let x = -w / 2; x < w / 2; x += .9) k.loft([[-r.range(.5, 1.5) - .1, .012], [-.2, .09], [0, .15]], x, h - .02, d / 2 + .62, 0xbfe4ff, { mat: 'metal', seg: 6, glow: .25, sub: 2 });
+  chimney(k, w * .26, h + w * .25, 0, w * .4 + 1.4, s.stone);
+  k.at(0, 0, d / 2 + .1); door(k, .04, 0x2d3560); windows(k, w * .8, h * .62, .02, WIN, 2); k.pop();
   return [w / 2 + .7, d / 2 + .7];
 }
 function copperHouse(k, r, s) {
-  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(5, 8);
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x94604a });
-  for (let y = 1; y < h; y += 1.4) k.box(w + .08, .1, d + .08, 0, y, 0, 0x4a3030, {});
-  k.prism(w + 1, w * .45, d + 1, 0, h, 0, r() < .5 ? s.roof : s.roof2, { j: .14 });
-  k.cyl(.8, 1, 5, -w * .28, h + 2.4, -d * .2, 0xb87a2a, { seg: 7 }); k.torus(.9, .15, -w * .28, h + 4.7, -d * .2, 0xf0bd5a, { rx: 1.57 });
+  const w = r.range(7, 10), d = r.range(7, 10), h = r.range(5, 8), rh = w * .45, rc = r() < .5 ? s.roof : s.roof2;
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x94604a, mat: 'brick', uv: .4, bevel: .05 });
+  for (let y = 1.4; y < h; y += 1.9) { k.box(w + .14, .14, d + .14, 0, y, 0, 0x8a5a24, { mat: 'metal' }); fine(k, () => { for (let x = -w / 2 + .4; x < w / 2; x += .8) k.ball(.05, x, y, d / 2 + .08, 0xe0a542, { mat: 'metal' }); }); }
+  pitched(k, w + 1, rh, d + 1, h, rc, s.wall, 0x8a5a24, { mat: 'metal', uv: .3, gable: 'brick' });
+  k.cyl(.8, 1, 5, -w * .28, h + 2.4, -d * .2, 0xb87a2a, { seg: 12, mat: 'metal' }); k.torus(.92, .16, -w * .28, h + 4.8, -d * .2, 0xf0bd5a, { rx: HP, mat: 'metal', seg: 18 });
+  k.tube([[w / 2 + .2, .2, d * .3], [w / 2 + .32, h * .6, d * .3], [w / 2 + .32, h + .5, d * .1], [w * .3, h + rh * .7, d * .02]], .16, 0xb87a2a, { mat: 'metal', seg: 8 });
   const R = Math.min(w, h) * .2;
-  k.torus(R, R * .26, w * .22, h * .78, d / 2 + .1, 0xe0a542, {}); for (let i = 0; i < 8; i++) { const a = i / 8 * TAU; k.box(.3, .4, .2, w * .22 + Math.cos(a) * R * 1.2, h * .78 + Math.sin(a) * R * 1.2, d / 2 + .1, 0xe0a542, { rz: a }); }
-  k.at(0, 0, d / 2 + .1); door(k, 0, 0x2c1e24); windows(k, w * .36, h * .3, 0, WIN, 1); k.pop();
+  k.torus(R, R * .24, w * .22, h * .78, d / 2 + .12, 0xe0a542, { mat: 'metal', seg: 20 }); k.cyl(R * .3, R * .3, .22, w * .22, h * .78, d / 2 + .12, 0x8a5a24, { rx: HP, seg: 10, mat: 'metal' });
+  for (let i = 0; i < 10; i++) { const a = i / 10 * TAU; k.box(.3, .4, .2, w * .22 + Math.cos(a) * R * 1.22, h * .78 + Math.sin(a) * R * 1.22, d / 2 + .12, 0xe0a542, { rz: a + HP, mat: 'metal' }); if (i < 5) k.box(R * 2, .1, .08, w * .22, h * .78, d / 2 + .12, 0xc98a33, { rz: i / 5 * Math.PI, mat: 'metal' }); }
+  k.at(0, 0, d / 2 + .1); door(k, .04, 0x2c1e24); windows(k, w * .36, h * .3, .02, WIN, 1); k.pop();
   return [w / 2 + .6, d / 2 + .6];
 }
 function ashHouse(k, r, s) {
-  const w = r.range(7, 9), d = r.range(7, 9), h = r.range(3.5, 4.8);
-  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x3e3448 }); k.prism(w + 1, w * .4, d + 1, 0, h, 0, s.roof, { j: .25 });
-  for (const x of [-w / 2, w / 2]) k.cone(.5, 3, x, h + .9, d / 2, 0x151020, { seg: 4 });
-  k.at(0, 0, d / 2 + .1); door(k, 0, 0x151020); windows(k, w * .8, h * .6, 0, WIN2, 2); k.pop();
+  const w = r.range(7, 9), d = r.range(7, 9), h = r.range(3.5, 4.8), rh = w * .4;
+  k.box(w + .4, .6, d + .4, 0, .28, 0, 0x1c1826, { mat: 'rock' });
+  k.box(w, h, d, 0, h / 2, 0, s.wall, { c2: 0x3e3448, mat: 'stone', uv: .4, bevel: .06 }); pitched(k, w + 1, rh, d + 1, h, s.roof, s.wall, s.beam, { mat: 'tile' });
+  for (const x of [-w / 2, w / 2]) { k.loft([[-.05, .5], [.9, .34], [2, .15], [3.2, .01]], x, h - .15, d / 2, 0x151020, { mat: 'rock', seg: 8 }); k.ball(.13, x, h + 1.6, d / 2 + .22, 0xff5a2a, { glow: 1 }); }
+  fine(k, () => { for (let i = 0; i < 4; i++) k.tube([[-w / 2 + .5 + i * w / 3.6, .3, d / 2 + .03], [-w / 2 + .75 + i * w / 3.6, h * .4, d / 2 + .03], [-w / 2 + .35 + i * w / 3.6, h * .72, d / 2 + .03]], [.05, .035, .01], 0xff5a24, { glow: 1, seg: 4 }); });
+  k.at(0, 0, d / 2 + .1); door(k, .04, 0x151020); windows(k, w * .8, h * .6, .02, WIN2, 2); k.pop();
   return [w / 2 + .5, d / 2 + .5];
 }
 const HOUSE = { shroom: shroomHouse, timber: timberHouse, bone: boneHouse, adobe: adobeHouse, frost: frostHouse, copper: copperHouse, ash: ashHouse };
 
 export function lampPost(k, x, y, z, col = 0xffb845, h = 4.2) {
-  k.cyl(.11, .17, h, x, y + h / 2, z, 0x2a2030, { seg: 5 });
-  k.box(.75, .1, .1, x + .3, y + h - .1, z, 0x2a2030, {});
-  k.box(.5, .68, .5, x + .6, y + h - .55, z, col, { glow: 1 });
-  k.cone(.42, .35, x + .6, y + h - .05, z, 0x2a2030, { seg: 4 });
+  k.loft([[0, .3], [.18, .26], [.34, .13], [h * .4, .1], [h - .05, .075]], x, y, z, 0x2a2030, { mat: 'metal', seg: 10 });
+  k.torus(.12, .03, x, y + h * .42, z, 0x3a3040, { rx: HP, mat: 'metal', seg: 10 });
+  k.tube([[x, y + h - .25, z], [x + .15, y + h + .04, z], [x + .48, y + h + .08, z], [x + .62, y + h - .02, z]], [.05, .045, .04, .025], 0x2a2030, { mat: 'metal', seg: 6, sub: 3 });
+  const lx = x + .62, ly = y + h - .58;
+  k.loft([[-.3, .13], [-.23, .25], [.2, .3], [.26, .2]], lx, ly, z, col, { glow: 1, seg: 8, sub: 1 });
+  k.loft([[-.36, .05], [-.31, .2], [-.27, .27]], lx, ly, z, 0x2a2030, { mat: 'metal', seg: 8, sub: 2 });
+  k.loft([[.24, .34], [.3, .36], [.44, .2], [.6, .03]], lx, ly, z, 0x2a2030, { mat: 'metal', seg: 8, sub: 2 });
+  fine(k, () => { for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + .78; k.tube([[lx + Math.cos(a) * .25, ly - .23, z + Math.sin(a) * .25], [lx + Math.cos(a) * .31, ly + .2, z + Math.sin(a) * .31]], .016, 0x2a2030, { mat: 'metal', seg: 4, sub: 1 }); } });
 }
 function well(k, s) {
-  k.cyl(3.1, 3.3, 1.3, 0, .65, 0, s.stone, { seg: 12 });
-  k.cyl(2.6, 2.6, .06, 0, 1.33, 0, 0x4fc2ff, { seg: 12, glow: .85 });
-  for (const x of [-2.6, 2.6]) k.box(.38, 5.2, .38, x, 2.6, 0, 0x3c2830, {});
-  k.prism(6.6, 1.5, 2.8, 0, 5.1, 0, s.roof ?? 0x7a2fb5, {});
+  const st = s.stone;
+  k.loft([[.0, 3.45], [.25, 3.35], [1.05, 3.12], [1.3, 3.16], [1.42, 3.28], [1.5, 3.15], [1.52, 2.72], [1.34, 2.6]], 0, 0, 0, st, { mat: 'stone', seg: 32, sub: 2, uv: .46 });
+  k.cyl(2.65, 2.65, .06, 0, 1.3, 0, 0x4fc2ff, { seg: 30, glow: .85 });
+  for (const x of [-2.75, 2.75]) { k.box(.42, 5.2, .42, x, 2.8, 0, 0x3c2830, { mat: 'wood' }); k.box(.72, .3, .72, x, 1.62, 0, st, { mat: 'stone' }); k.tube([[x, 3.9, 0], [x - Math.sign(x) * .5, 4.6, 0], [x - Math.sign(x) * 1.3, 4.86, 0]], [.11, .09, .07], 0x3c2830, { mat: 'wood', seg: 6 }); }
+  k.cyl(.17, .17, 5.2, 0, 4.15, 0, 0x4a3024, { rz: HP, seg: 10, mat: 'wood' });
+  fine(k, () => { for (let i = 0; i < 7; i++) k.torus(.22, .035, -.36 + i * .12, 4.15, 0, 0xb8a078, { ry: HP, mat: 'cloth', seg: 12 }); k.tube([[.1, 4.0, .18], [.1, 2.6, .18], [.1, 1.8, .18]], .022, 0xb8a078, { mat: 'cloth', seg: 4, sub: 1 }); k.loft([[1.42, .22], [1.5, .27], [1.86, .3], [1.92, .28]], .1, 0, .18, 0x5a3c2c, { mat: 'wood', seg: 12, sub: 2 }); });
+  pitched(k, 7, 1.75, 3.2, 5.1, s.roof ?? 0x7a2fb5, s.beam ?? 0x4a3024, s.beam ?? 0x3c2830);
 }
 function stall(k, r, s) {
   const c = r.pick([0xc23a3a, 0x3a6ac2, 0xd4a13a, 0x7a3ac2]);
-  k.box(5, 1.1, 2.1, 0, .55, 0, 0x5a3c2c, {});
-  for (const [x, z] of [[-2.4, -1], [2.4, -1], [-2.4, 1], [2.4, 1]]) k.box(.16, 3.2, .16, x, 1.6, z, 0x3c2830, {});
-  k.prism(5.5, .9, 2.9, 0, 3.2, 0, c, {});
-  for (let i = 0; i < 7; i++) k.ball(.25, -2 + i * .66, 1.34, r.range(-.5, .5), r.pick([0xff5a4a, 0xffc445, 0x6ae06a, 0xc87aff]), { seg: 4 });
+  k.box(5, .12, 2.1, 0, 1.06, 0, 0x7a5a3c, { mat: 'wood', uv: .55 }); k.box(4.8, .95, .08, 0, .54, 1, 0x5a3c2c, { mat: 'wood', uv: .55 }); k.box(4.8, .95, .08, 0, .54, -1, 0x5a3c2c, { mat: 'wood', uv: .55 });
+  for (const x of [-2.4, 2.4]) k.box(.08, .95, 2, x, .54, 0, 0x5a3c2c, { mat: 'wood' });
+  for (const [x, z] of [[-2.4, -1], [2.4, -1], [-2.4, 1], [2.4, 1]]) k.cyl(.08, .1, 3.2, x, 1.6, z, 0x3c2830, { seg: 8, mat: 'wood' });
+  const rows = []; for (let i = 0; i <= 8; i++) { const z = -1.5 + i / 8 * 3, y = 3.05 + (1 - Math.abs(z) / 1.5) * .95; rows.push(Array.from({ length: 13 }, (_, j) => { const u = j / 12; return [-2.75 + u * 5.5, y + Math.sin(u * 9.42) * .03, z]; })); }
+  k.sheet(rows, c, { mat: 'cloth', uv: .55 });
+  for (const z of [-1.5, 1.5]) fine(k, () => { for (let j = 0; j < 11; j++) { const x = -2.75 + j * .55, a = [x, 3.06, z], b = [x + .55, 3.06, z]; k.sheet([[a, b], [[x + .03, 2.78, z], [x + .52, 2.78, z]], [[x + .275, 2.62, z], [x + .275, 2.62, z]]], j % 2 ? c : 0xf0e6d0, { mat: 'cloth' }); } });
+  k.box(4.9, .08, .08, 0, 3.04, 1.5, 0x3c2830, { mat: 'wood' }); k.box(4.9, .08, .08, 0, 3.04, -1.5, 0x3c2830, { mat: 'wood' }); k.box(.08, .08, 3, 0, 4, 0, 0x3c2830, { mat: 'wood' });
+  for (let i = 0; i < 7; i++) { const x = -2 + i * .66, z = r.range(-.5, .5), t = r.pick([0xff5a4a, 0xffc445, 0x6ae06a, 0xc87aff]); if (i % 3 === 2) k.loft([[1.12, .2], [1.2, .25], [1.42, .22], [1.5, .12]], x, 0, z, 0x7a5a3c, { mat: 'wood', seg: 9, sub: 2 }); k.ball(.2, x, 1.34 + (i % 3 === 2 ? .2 : 0), z, t, { mat: 'skin' }); fine(k, () => { for (const [dx, dz] of [[.26, .1], [-.2, .22], [.04, -.26]]) k.ball(.13, x + dx, 1.25, z + dz, t, { mat: 'skin' }); }); }
 }
 
 function shopSign(k, h) {
@@ -143,7 +220,7 @@ function shopSign(k, h) {
 }
 
 function buildTown(p) {
-  const r = RNG(strHash(p.id)), reg = regionAt(p.x, p.z), s = STY[reg.id], k = new Kit(strHash(p.id) + 5), place = HOUSE[s.h], local = [];
+  const r = RNG(strHash(p.id)), reg = regionAt(p.x, p.z), s = STY[reg.id], k = new Kit(strHash(p.id) + 5, LOD), place = HOUSE[s.h], local = [];
   k.at(p.x, p.h, p.z);
   k.cyl(27, 28, .3, 0, .08, 0, s.plaza, { seg: 22, j: .1 });
   k.torus(27, .5, 0, .2, 0, s.stone, { rx: 1.57, seg: 22 });
@@ -192,7 +269,7 @@ function buildTown(p) {
 }
 
 function shrine(p, parent) {
-  const k = new Kit(strHash(p.id));
+  const k = new Kit(strHash(p.id), LOD);
   k.at(p.x, p.h, p.z);
   k.cyl(3.4, 3.8, .6, 0, .3, 0, 0x6c6890, { seg: 8 }); k.cyl(2.5, 2.9, .5, 0, .85, 0, 0x8a86b0, { seg: 8 });
   for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + .78; k.box(.4, 2, .4, Math.cos(a) * 2.9, 1.5, Math.sin(a) * 2.9, 0x5c5880, {}); k.oct(.28, Math.cos(a) * 2.9, 2.8, Math.sin(a) * 2.9, 0x7fd0ff, { glow: 1 }); }
@@ -208,7 +285,7 @@ function shrine(p, parent) {
 }
 
 function camp(p) {
-  const r = RNG(strHash(p.id)), k = new Kit(strHash(p.id) + 3), hot = p.pack.startsWith('cult') || p.pack === 'imps', bone = /skel|bog/.test(p.pack), ice = /frost|wraith|yeti/.test(p.pack), tent = hot ? 0x9a3226 : bone ? 0x3c3448 : ice ? 0x5f7fd0 : p.pack === 'clockwork' || p.pack === 'gears' ? 0x7a5230 : p.pack === 'mages' || p.pack === 'shadows' ? 0x3a1f55 : 0x5e6a38;
+  const r = RNG(strHash(p.id)), k = new Kit(strHash(p.id) + 3, LOD), hot = p.pack.startsWith('cult') || p.pack === 'imps', bone = /skel|bog/.test(p.pack), ice = /frost|wraith|yeti/.test(p.pack), tent = hot ? 0x9a3226 : bone ? 0x3c3448 : ice ? 0x5f7fd0 : p.pack === 'clockwork' || p.pack === 'gears' ? 0x7a5230 : p.pack === 'mages' || p.pack === 'shadows' ? 0x3a1f55 : 0x5e6a38;
   k.at(p.x, p.h, p.z);
   k.cyl(1.5, 1.7, .4, 0, .2, 0, 0x3c3448, { seg: 8 });
   k.cone(1.05, 2.3, 0, 1.45, 0, 0xff7a28, { seg: 5, glow: 1 }); k.cone(.55, 1.5, .3, 1.1, .2, 0xffd070, { seg: 4, glow: 1 });
@@ -280,7 +357,7 @@ function exterior(p, k) {
   }
 }
 function dungeonEntrance(p) {
-  const k = new Kit(strHash(p.id) + 9), [wall, glow] = DOORS[p.theme];
+  const k = new Kit(strHash(p.id) + 9, LOD), [wall, glow] = DOORS[p.theme];
   k.at(p.x, p.h, p.z);
   exterior(p, k);
   k.box(8, .3, 7, 0, .15, 3, wall, {});
@@ -328,7 +405,7 @@ export function buildStructures(parent) {
     else if (p.type === 'camp') k = camp(p);
     else if (p.type === 'dungeon') k = dungeonEntrance(p);
     else if (p.type === 'landmark') {
-      k = new Kit(strHash(p.id));
+      k = new Kit(strHash(p.id), LOD);
       const r = RNG(strHash(p.id));
       k.at(p.x, p.h, p.z);
       withOffsetColliders(p, () => (LM[p.kind] || LM.statue)(k, r));
@@ -340,11 +417,21 @@ export function buildStructures(parent) {
       }
       k.pop();
     }
-    const m = k.mesh();
-    m.userData.poi = p;
+    const lod = k.buildLOD(), m = new THREE.Mesh(lod.hi, MAT.solid);
+    m.userData.poi = p; m.userData.lod = lod; m.castShadow = true; m.receiveShadow = true;
     group.add(m); meshes.push(m);
   }
-  return { group, meshes, houses: HOUSES, update(x, z) { for (const m of meshes) { const p = m.userData.poi; m.visible = Math.hypot(p.x - x, p.z - z) < 1150; } } };
+  return {
+    group, meshes, houses: HOUSES,
+    update(x, z) {
+      for (const m of meshes) {
+        const p = m.userData.poi, d = Math.hypot(p.x - x, p.z - z), near = !G.settings.low && d < p.r + 190;
+        m.visible = d < 1150; m.castShadow = near && d < p.r + 130;
+        const g = near ? m.userData.lod.hi : m.userData.lod.lo;
+        if (m.geometry !== g) m.geometry = g;
+      }
+    },
+  };
 }
 
 // Landmark-Bauten beschreiben Kollisionen lokal. Hier werden sie in Weltkoordinaten umgerechnet.
