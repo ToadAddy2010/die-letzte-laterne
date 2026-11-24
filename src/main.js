@@ -80,6 +80,7 @@ const game = G.game = {
     G.tutorial?.stop(); G.explore?.reset();
     G.mount.reset();
     G.vfx?.clear(); G.weather?.reset(); G.slowT = 0;
+    if (G.net && !G.net.role) G.net.error = '';
     G.fx.clear(); G.enemies.clear(); G.interact.clearAllPickups(); G.interact.clearDungeon();
     if (G.inDungeon) { G.dungeon.leave(); G.inDungeon = null; G.worldGroup.visible = true; G.scene.background = null; G.scene.fog.density = outdoorFog(); }
     G.enemies.camps = {};

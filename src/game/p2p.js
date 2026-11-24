@@ -12,7 +12,7 @@ const MSG = {
   'socket-error': 'Der Vermittlungsserver ist nicht erreichbar. Manche Netzwerke, etwa in Schulen, blockieren das.',
   'socket-closed': 'Die Verbindung zum Vermittlungsserver wurde getrennt.',
   'browser-incompatible': 'Dieser Browser unterstützt keinen Multiplayer.',
-  'webrtc': 'Eure Netzwerke lassen keine direkte Verbindung zu. Probiert ein anderes WLAN.',
+  'webrtc': 'Eure Geräte erreichen sich nicht. Bei Hotspot oder mobilen Daten passiert das oft. Tipps stehen unter „Verbindungshilfe“.',
 };
 const why = e => MSG[e?.type] ?? 'Die Verbindung hat nicht geklappt. Probiert ein anderes WLAN.';
 
@@ -28,6 +28,22 @@ function loadPeer() {
   });
   return lib;
 }
+const RELAY = 'letzte-laterne-relay';
+/** Eigener Relay-Server (TURN). Er bleibt nur in diesem Browser gespeichert. */
+export const relay = {
+  get() { try { const d = JSON.parse(localStorage.getItem(RELAY)); return d && typeof d.urls === 'string' && /^turns?:/i.test(d.urls) ? d : null; } catch { return null; } },
+  set(urls, username, credential) {
+    const list = String(urls || '').split(/[\s,]+/).filter(u => /^turns?:[\w.:?=&\-[\]]+$/i.test(u)).slice(0, 4);
+    if (!list.length) return false;
+    try { localStorage.setItem(RELAY, JSON.stringify({ urls: list.join(' '), username: String(username || '').slice(0, 200), credential: String(credential || '').slice(0, 300) })); return true; } catch { return false; }
+  },
+  clear() { try { localStorage.removeItem(RELAY); } catch { /* egal */ } },
+};
+const iceServers = () => {
+  const r = relay.get(), list = [{ urls: ['stun:stun.l.google.com:19302', 'stun:stun.cloudflare.com:3478'] }];
+  if (r) list.push({ urls: r.urls.split(' '), username: r.username, credential: r.credential });
+  return list;
+};
 const newCode = () => { const a = new Uint8Array(6); crypto.getRandomValues(a); return [...a].map(v => ALPHA[v % ALPHA.length]).join(''); };
 const charKey = () => `letzte-laterne-net-${G.profiles?.cur?.id ?? 'gast'}`;
 export const cleanName = s => { const n = String(s ?? '').trim().replace(/\s+/g, ' ').slice(0, 16); return NAME.test(n) ? n : ''; };
@@ -84,7 +100,7 @@ export class Link {
     const Peer = await loadPeer();
     if (this.dead) return;
     try { this.peer?.destroy(); } catch { /* schon zu */ }
-    const code = this.code = newCode(), p = this.peer = new Peer(ROOM(code), { debug: 0 });
+    const code = this.code = newCode(), p = this.peer = new Peer(ROOM(code), { debug: 0, config: { iceServers: iceServers() } });
     p.on('open', () => { if (this.peer === p) { this.opened = true; this.up({ t: 'opened', code, url: this.url() }); } });
     p.on('connection', c => this.incoming(c));
     p.on('disconnected', () => { if (this.peer === p && !this.dead && !p.destroyed) try { p.reconnect(); } catch { /* neuer Versuch beim nächsten Öffnen */ } });
@@ -129,11 +145,12 @@ export class Link {
   async joinRoom() {
     const code = String(this.hello.code || '').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 10), Peer = await loadPeer();
     if (this.dead) return;
-    const p = this.peer = new Peer({ debug: 0 });
-    this.timer = setTimeout(() => this.fail(MSG.webrtc), 22000);
+    const p = this.peer = new Peer({ debug: 0, config: { iceServers: iceServers() } });
+    this.timer = setTimeout(() => this.fail(MSG.webrtc), 20000);
     p.on('error', e => { if (this.peer === p) this.fail(why(e)); });
     p.on('open', () => {
       const c = p.connect(ROOM(code), { serialization: 'raw', reliable: true });
+      c.on('iceStateChanged', st => { if (st === 'failed' && !this.conn) this.fail(MSG.webrtc); });
       c.on('open', () => { clearTimeout(this.timer); this.timer = setTimeout(() => this.fail('Der Gastgeber hat nicht geantwortet.'), 45000); this.conn = c; this.readyState = 1; this.tx(c, { t: 'hello', role: 'guest', name: this.hello.name }); });
       c.on('data', raw => {
         const m = this.rx(raw); if (!m) return;

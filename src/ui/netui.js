@@ -3,7 +3,7 @@ import { G } from '../game/state.js';
 import { Input } from '../core/input.js';
 import { ITEMS } from '../data/items.js';
 import { POI } from '../data/world.js';
-import { cleanName } from '../game/p2p.js';
+import { cleanName, relay } from '../game/p2p.js';
 
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
@@ -61,17 +61,44 @@ export class NetUI {
     $('askY').onclick = () => G.net.joinAsk?.(true); $('askN').onclick = () => G.net.joinAsk?.(false);
   }
 
+  // ── Verbindungshilfe ──
+  helpHtml() {
+    const r = relay.get();
+    return `<h2>Verbindungshilfe</h2>
+<p><b>Am zuverlässigsten:</b> Beide Geräte sind im selben WLAN, zum Beispiel zu Hause.</p>
+<p><b>Hotspot oder mobile Daten:</b> Windows stuft einen Hotspot meist als öffentliches Netz ein. Wurde das Firewall-Fenster für den Browser abgelehnt, blockiert Windows dort eingehende Verbindungen. Ändern kann das nur jemand mit Admin-Rechten, zum Beispiel deine Eltern. Handynetze lassen außerdem oft keine direkte Verbindung zwischen zwei Handys zu.</p>
+<p><b>Eigener Relay-Server:</b> Mit einem Relay-Server (TURN) klappt es auch über mobile Daten. Kostenlose Angebote brauchen ein Konto, das deine Eltern anlegen sollten. Es reicht, wenn der Gastgeber ihn einträgt. Die Daten bleiben nur in diesem Browser, das Passwort steht dort unverschlüsselt.</p>
+<p class="pfNote">${r ? `Eingetragen: ${esc(r.urls)}` : 'Noch kein Relay-Server eingetragen.'}</p>
+<label class="netlabel">Adresse (beginnt mit turn: oder turns:)<input id="rUrl" class="netfield" maxlength="300" autocomplete="off" spellcheck="false" value="${esc(r?.urls || '')}"></label>
+<label class="netlabel">Benutzername<input id="rUser" class="netfield" maxlength="200" autocomplete="off" spellcheck="false" value="${esc(r?.username || '')}"></label>
+<label class="netlabel">Passwort<input id="rPass" class="netfield" type="password" maxlength="300" autocomplete="off"></label>
+<p id="rErr" class="neterr"></p><div class="acts"><button id="rSave">Speichern</button>${r ? '<button id="rDel">Löschen</button>' : ''}<button id="rBack">Zurück</button></div>`;
+  }
+  bindHelp(root, back) {
+    for (const i of root.querySelectorAll('input')) for (const ev of ['keydown', 'keyup', 'keypress']) i.addEventListener(ev, e => e.stopPropagation());
+    $('rSave').onclick = () => {
+      const old = relay.get(), pass = $('rPass').value || (old && $('rUrl').value.trim() === old.urls ? old.credential : '');
+      if (!relay.set($('rUrl').value, $('rUser').value, pass)) { $('rErr').textContent = 'Die Adresse muss mit turn: oder turns: beginnen.'; G.audio?.deny(); return; }
+      G.ui.toast('Relay-Server gespeichert', 'quest'); G.audio?.tick(); back();
+    };
+    if ($('rDel')) $('rDel').onclick = () => { relay.clear(); G.ui.toast('Relay-Server gelöscht', 'warn'); back(); };
+    $('rBack').onclick = back;
+  }
+  helpPanel(el) { el.innerHTML = `<div class="col">${this.helpHtml()}</div>`; this.bindHelp(el, () => this.panel(el)); }
+  helpPane(code, error) { G.ui.titlePane(this.helpHtml()); const p = $('titlePane'); this.bindHelp(p, () => this.joinPane(code, error)); }
+
   // ── Teammenü ──
   panel(el) {
     const N = G.net, P = G.player;
     if (!N.role) {
-      el.innerHTML = `<div class="col"><h2>Mit Freund spielen</h2><p>Öffne einen Raum. Du bekommst einen Link, den du deinem Freund schickst. Ihr spielt dann gemeinsam in deiner Welt, ohne Konto und ohne Download.</p>${N.error ? `<p class="neterr">${esc(N.error)}</p>` : ''}<div class="acts"><button id="nOpen">Raum öffnen</button></div></div><div class="col narrow"><h3>So läuft es</h3><p style="color:var(--dim)">Dein Browser ist der Gastgeber und muss offen bleiben. Du entscheidest, wer hereinkommt.</p><p style="color:var(--dim)">Ein öffentlicher Dienst (PeerJS) stellt den Kontakt her, danach verbinden sich eure Browser meist direkt. Dabei sieht der andere deine IP-Adresse. Teile den Link nur mit Leuten, die du kennst.</p></div>`;
+      el.innerHTML = `<div class="col"><h2>Mit Freund spielen</h2><p>Öffne einen Raum. Du bekommst einen Link, den du deinem Freund schickst. Ihr spielt dann gemeinsam in deiner Welt, ohne Konto und ohne Download.</p>${N.error ? `<p class="neterr">${esc(N.error)}</p>` : ''}<div class="acts"><button id="nOpen">Raum öffnen</button><button id="nHelp">Verbindungshilfe</button></div></div><div class="col narrow"><h3>So läuft es</h3><p style="color:var(--dim)">Dein Browser ist der Gastgeber und muss offen bleiben. Du entscheidest, wer hereinkommt.</p><p style="color:var(--dim)">Ein öffentlicher Dienst (PeerJS) stellt den Kontakt her, danach verbinden sich eure Browser meist direkt. Dabei sieht der andere deine IP-Adresse. Teile den Link nur mit Leuten, die du kennst.</p></div>`;
       $('nOpen').onclick = () => { G.audio?.tick(); N.host(); };
+      $('nHelp').onclick = () => { G.audio?.tick(); this.helpPanel(el); };
       return;
     }
     if (N.isHost && !N.active) {
       const R = N.room || {}, link = N.inviteLink();
-      el.innerHTML = `<div class="col"><h2>Warte auf deinen Freund</h2>${R.state !== 'open' ? '<p>Der Raum wird geöffnet. Das dauert ein paar Sekunden.</p>' : link ? `<p>Schick deinem Freund diesen Link:</p><input id="nLink" class="netfield" readonly value="${esc(link)}"><div class="acts"><button id="nCopy">Link kopieren</button></div><p style="color:var(--dim)">Teile ihn nur mit Leuten, die mitspielen sollen.</p>` : `<p class="neterr">${esc(N.error || 'Der Raum konnte nicht geöffnet werden.')}</p><p>Manche Netzwerke, zum Beispiel in Schulen, blockieren das. Probier es in einem anderen WLAN, etwa zu Hause.</p><div class="acts"><button id="nRetry">Nochmal versuchen</button></div>`}<div class="acts"><button id="nClose">Raum schließen</button></div></div><div class="col narrow"><h3>Raumcode</h3><p class="netcode">${esc(R.code || '······')}</p></div>`;
+      el.innerHTML = `<div class="col"><h2>Warte auf deinen Freund</h2>${R.state !== 'open' ? '<p>Der Raum wird geöffnet. Das dauert ein paar Sekunden.</p>' : link ? `<p>Schick deinem Freund diesen Link:</p><input id="nLink" class="netfield" readonly value="${esc(link)}"><div class="acts"><button id="nCopy">Link kopieren</button></div><p style="color:var(--dim)">Teile ihn nur mit Leuten, die mitspielen sollen. Am zuverlässigsten klappt es, wenn beide im selben WLAN sind.</p>` : `<p class="neterr">${esc(N.error || 'Der Raum konnte nicht geöffnet werden.')}</p><p>Manche Netzwerke, zum Beispiel in Schulen, blockieren das. Probier es in einem anderen WLAN, etwa zu Hause.</p><div class="acts"><button id="nRetry">Nochmal versuchen</button></div>`}<div class="acts"><button id="nClose">Raum schließen</button></div></div><div class="col narrow"><h3>Raumcode</h3><p class="netcode">${esc(R.code || '······')}</p></div>`;
       if ($('nCopy')) $('nCopy').onclick = async () => { const f = $('nLink'); try { await navigator.clipboard.writeText(link); } catch { f.select(); document.execCommand('copy'); } $('nCopy').textContent = 'Kopiert'; G.audio?.tick(); };
       if ($('nRetry')) $('nRetry').onclick = () => { N.error = ''; N.room = { state: 'opening' }; N.send({ t: 'open' }); G.ui.drawPanel(); };
       $('nClose').onclick = () => { N.leave(); G.ui.drawPanel(); };
@@ -96,7 +123,7 @@ export class NetUI {
     G.net.lastCode = code;
     let saved = '';
     try { saved = localStorage.getItem('letzte-laterne-name') || (G.profiles?.cur?.guest ? '' : G.profiles?.cur?.name) || ''; } catch { /* optional */ }
-    G.ui.titlePane(`<h2>Spiel beitreten</h2><p style="color:var(--dim)">Deine Figur bleibt in diesem Browser gespeichert. Der Gastgeber muss dich hereinlassen. Tritt nur Räumen von Leuten bei, die du kennst.</p>${error ? `<p class="neterr">${esc(error)}</p>` : ''}<label class="netlabel">Dein Name<input id="jName" class="netfield" maxlength="16" value="${esc(saved)}" autocomplete="off"></label><label class="netlabel">Raumcode<input id="jCode" class="netfield" maxlength="10" value="${esc(code)}" autocomplete="off"></label><div class="acts"><button id="jGo">Beitreten</button></div>`);
+    G.ui.titlePane(`<h2>Spiel beitreten</h2><p style="color:var(--dim)">Deine Figur bleibt in diesem Browser gespeichert. Der Gastgeber muss dich hereinlassen. Tritt nur Räumen von Leuten bei, die du kennst.</p>${error ? `<p class="neterr">${esc(error)}</p>` : ''}<label class="netlabel">Dein Name<input id="jName" class="netfield" maxlength="16" value="${esc(saved)}" autocomplete="off"></label><label class="netlabel">Raumcode<input id="jCode" class="netfield" maxlength="10" value="${esc(code)}" autocomplete="off"></label><div class="acts"><button id="jGo">Beitreten</button><button id="jHelp">Verbindungshilfe</button></div>`);
     const go = () => {
       const name = cleanName($('jName').value), c = $('jCode').value.trim().toUpperCase();
       if (!name || !c) { G.audio?.deny?.(); return; }
@@ -105,6 +132,7 @@ export class NetUI {
       G.net.join(c, name);
     };
     $('jGo').onclick = go;
+    $('jHelp').onclick = () => { G.audio?.tick(); this.helpPane($('jCode').value.trim().toUpperCase(), error); };
     for (const id of ['jName', 'jCode']) $(id).addEventListener('keydown', e => { e.stopPropagation(); if (e.key === 'Enter') go(); });
     const back = $('paneX'); if (back && G.net.isInvited) back.style.display = 'none';
     ($('jName').value ? $('jGo') : $('jName')).focus();
