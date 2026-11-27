@@ -6,6 +6,7 @@ import { Weather } from './world/weather.js';
 import { Photo } from './game/photo.js';
 import { Feats } from './game/feats.js';
 import { TALENT } from './data/extras.js';
+import { setLang, detectLang, watchDom } from './i18n/i18n.js';
 import { HUMAN, loadCharacters } from './actors/skinned.js';
 import { makeModel, setFlash } from './actors/models.js';
 import { loadMonsters } from './actors/monsters.js';
@@ -259,6 +260,9 @@ async function boot() {
   const oldGfx = JSON.parse(store.get(SETTINGS) || '{}').gfx === undefined && store.get(SETTINGS);
   if (oldGfx || (G.settings.gfx ?? 0) < 3) { if (!matchMedia('(pointer: coarse)').matches) G.settings.lines = 1080; else G.settings.lines = Math.max(G.settings.lines, 540); G.settings.gfx = 3; G.settings.retro = false; if (store.get(SETTINGS)) store.set(SETTINGS, JSON.stringify(G.settings)); }
   if (!store.get(SETTINGS) && matchMedia('(pointer: coarse)').matches) { const short = Math.min(innerWidth, innerHeight); G.settings.lines = short < 560 ? 540 : 720; G.settings.low = short < 560; }
+  G.settings.lang ??= detectLang();
+  watchDom();
+  await setLang(G.settings.lang);
   G.test = new URLSearchParams(location.search).has('test');
   G.profiles = new Profiles(); G.profiles.init(G.test); G.profileUI = new ProfileUI();
   G.ui = new UI();

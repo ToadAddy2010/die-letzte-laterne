@@ -320,3 +320,9 @@ button.talent.can { opacity: 1; border-color: var(--gold); box-shadow: 0 0 7px r
 .feat { padding: 6px 8px; border: 1px solid #3c3a78; opacity: .62; } .feat.have { opacity: 1; border-color: #ffb43a; background: rgba(255, 190, 80, .12); } .feat b { display: block; } .feat small { display: block; color: var(--dim); font-size: 15px; line-height: 1.1; min-height: 16px; }
 .featBar { display: block; height: 4px; margin-top: 4px; background: #000; } .featBar i { display: block; height: 100%; background: var(--gold); } .feat em { font-style: normal; font-size: 14px; color: var(--dim); }
 #photoHint { position: fixed; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 60; padding: 5px 12px; background: rgba(0, 0, 0, .62); color: #f2e8d0; font-size: 15px; white-space: nowrap; max-width: 96vw; overflow: hidden; text-overflow: ellipsis; pointer-events: none; }
+
+/* Sprachen */
+.langPick { display: flex; flex-wrap: wrap; gap: 4px; justify-content: center; margin: 2px 0 8px; }
+.langPick button { min-width: 0; padding: 3px 9px; font-size: 16px; opacity: .7; } .langPick button.on { opacity: 1; border-color: var(--gold); color: var(--gold); }
+body.lang-hi, body.lang-hi h1, body.lang-hi h2, body.lang-hi h3, body.lang-hi button, body.lang-hi #lvl b, body.lang-hi .detail h2, body.lang-hi #boss b { font-family: 'Nirmala UI', 'Noto Sans Devanagari', 'Kohinoor Devanagari', 'Mangal', 'Palatino Linotype', Georgia, sans-serif; }
+body.lang-hi { line-height: 1.38; }

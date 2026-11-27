@@ -3,83 +3,99 @@ import { Kit, MAT, GFX } from '../core/gfx.js';
 import { clamp, damp, lerp, smooth, TAU } from '../core/util.js';
 import { G } from '../game/state.js';
 
+// Sonne und Mond: echte Himmelskörper statt Comic-Gesichtern. Schaut der Mond zu, öffnet sich ein einziges Auge.
+const BODY_VS = 'varying vec2 vUv; void main(){ vUv = uv * 2. - 1.; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.); }';
+const NOISE = `
+float hh(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float nn(vec2 p){ vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f); return mix(mix(hh(i), hh(i + vec2(1., 0.)), f.x), mix(hh(i + vec2(0., 1.)), hh(i + vec2(1., 1.)), f.x), f.y); }
+float fb(vec2 p){ float v = 0., a = .5; for (int i = 0; i < 5; i++) { v += a * nn(p); p = p * 2.03 + 1.7; a *= .5; } return v; }`;
+const MOON_FS = `
+uniform float open, t, angry, look;
+varying vec2 vUv;
+${NOISE}
+float crater(vec2 p, float s, float seed){
+  vec2 g = floor(p * s), f = fract(p * s); float best = 9.;
+  for (int y = -1; y <= 1; y++) for (int x = -1; x <= 1; x++) {
+    vec2 o = vec2(float(x), float(y)), id = g + o + seed;
+    if (hh(id + 9.1) < .5) continue;
+    vec2 c = o + vec2(hh(id), hh(id + 7.3));
+    best = min(best, length(f - c) / (.16 + .3 * hh(id + 3.1)));
+  }
+  return best;
+}
+void main(){
+  vec2 p = vUv * 1.3; float r = length(p);
+  vec3 col = vec3(0.); float a = 0.;
+  if (r < 1.) {
+    float z = sqrt(1. - r * r); vec3 N = vec3(p, z);
+    vec2 q = p / (.55 + z * .45);
+    float mare = smoothstep(.44, .7, fb(q * 1.5 + 4.2));
+    float alb = mix(.8, .44, mare) * (.84 + .3 * fb(q * 7.3));
+    for (int k = 0; k < 3; k++) {
+      float d = crater(q + float(k) * 1.7, 3. + float(k) * 4.6, float(k) * 11.);
+      alb *= mix(.7, 1., smoothstep(.5, .9, d));
+      alb += .17 * smoothstep(.84, .98, d) * (1. - smoothstep(.98, 1.14, d));
+    }
+    float lit = .2 + .8 * max(dot(N, normalize(vec3(-.42, .34, .84))), 0.);
+    col = vec3(.79, .81, .87) * alb * lit * 1.4 * (.55 + .45 * pow(z, .45));
+    vec2 e = vec2(p.x / .62, p.y + .03);
+    float w = max(0., 1. - e.x * e.x), up = .3 * w * open, lo = -.16 * w * open;
+    float seam = (1. - smoothstep(0., .014, abs(e.y - .022 * w))) * step(abs(e.x), .97) * (1. - open);
+    float scars = smoothstep(.6, .66, fb(p * 9. + 3.)) * smoothstep(.75, .15, length(p * vec2(.8, 1.5)));
+    float socket = smoothstep(.55, .0, length(vec2(e.x * .9, (e.y - .01) * 2.2))) * open;
+    col *= 1. - seam * .62 - scars * .22 * (.35 + open) - socket * .42;
+    if (abs(e.x) < 1. && e.y < up && e.y > lo && open > .02) {
+      vec2 ip = vec2(p.x - look, e.y - .04 * open);
+      float ir = length(ip);
+      float vein = smoothstep(.58, .64, fb(vec2(e.x * 9., e.y * 30.) + 5.)) * smoothstep(.15, .9, abs(e.x));
+      vec3 scl = mix(vec3(.26, .2, .14), vec3(.3, .07, .05), angry) * (.42 + .58 * smoothstep(lo, up, e.y)) * + vec3(.5, .08, .05) * vein * .55;
+      vec3 irisC = mix(vec3(1., .68, .22), vec3(1., .3, .08), angry);
+      float streak = .55 + .45 * fb(vec2(atan(ip.y, ip.x) * 3.2, ir * 15. - t * .3));
+      vec3 ec = mix(scl, irisC * streak * 1.45, smoothstep(.205, .185, ir));
+      ec = mix(ec, irisC * .12, smoothstep(.215, .2, ir) * smoothstep(.17, .2, ir));
+      float slit = smoothstep(.05 - .02 * open, .025, abs(ip.x)) * smoothstep(.17, .15, abs(ip.y));
+      ec = mix(ec, vec3(.015, 0., .02), slit);
+      float shade = smoothstep(0., .09, up - e.y) * smoothstep(0., .06, e.y - lo);
+      col = ec * (.18 + .82 * shade) * (.75 + .25 * smoothstep(1., .4, abs(e.x)));
+    }
+    col += vec3(.5, .55, .72) * pow(1. - z, 3.) * .28;
+    a = 1.;
+  }
+  float halo = exp(-max(r - 1., 0.) * 4.) * step(1., r) * smoothstep(1.3, 1.02, r);
+  vec3 hc = mix(vec3(.42, .48, .68), vec3(.62, .16, .1), angry * open);
+  col += hc * halo * (.32 + open * .28);
+  gl_FragColor = vec4(col, a);
+}`;
+const SUN_FS = `
+uniform float t;
+varying vec2 vUv;
+void main(){
+  vec2 p = vUv * 1.3; float r = length(p), core = smoothstep(1., .965, r), limb = pow(max(1. - r * r, 0.), .35), ang = atan(p.y, p.x);
+  vec3 col = vec3(1., .9, .7) * (1.05 + limb * .65) * core;
+  float rays = .55 + .45 * sin(ang * 13. + t * .25) * sin(ang * 7. - t * .17);
+  float cor = exp(-max(r - 1., 0.) * 3.) * (1. - core) * (.65 + .35 * rays) * smoothstep(1.3, 1.02, r);
+  col += vec3(1., .66, .36) * cor * .45;
+  gl_FragColor = vec4(col, core);
+}`;
+
 class Face {
   constructor(kind) {
-    this.kind = kind;
+    this.kind = kind; this.open = 0;
     this.group = new THREE.Group();
-    this.open = 0;
-    const moon = kind === 'moon', skin = moon ? 0x6f7380 : 0xe8a860, skin2 = moon ? 0xc9ccd4 : 0xfff0cc, lip = moon ? 0x3c3e4a : 0xb8703a, line = moon ? 0x2c2e38 : 0x9a5a30;
-    const k = new Kit(moon ? 11 : 22);
-    k.blob(30, 0, 0, 0, skin, { c2: skin2, j: .13 });
-    k.ball(29.6, 0, 0, 0, skin, { c2: skin2, seg: 14, j: .1 });
-    for (let i = 0; i < 26; i++) {
-      const a = i * 2.39996, r = 8 + i * .85, x = Math.cos(a) * r, y = Math.sin(a) * r;
-      k.ball(1 + (i % 4) * .55, x, y, Math.sqrt(Math.max(1, 880 - x * x - y * y)), moon ? 0x565a66 : 0xd89650, { seg: 5, sz: .35 });
-    }
-    k.ball(4.8, 0, -2.5, 29, skin, { c2: skin2, sy: 1.25, seg: 8 });
-    k.ball(6, -14, -8, 24, skin, { c2: skin2, sz: .55, seg: 7 });
-    k.ball(6, 14, -8, 24, skin, { c2: skin2, sz: .55, seg: 7 });
-    k.torus(9, 1.5, 0, -8, 27.2, lip, { arc: Math.PI, rz: Math.PI, sy: .4, seg: 10 });
-    k.box(16, .9, 1, 0, -12.2, 27, line, {});
-    if (moon) {
-      k.torus(7.4, .55, -24, 15, 12, 0x8a8e9a, { ry: -1.1 });
-      k.torus(4.4, .4, 20, -19, 13, 0x8a8e9a, { ry: 1.1 });
-    } else {
-      for (let i = 0; i < 16; i++) {
-        const a = i / 16 * TAU, long = i % 2 === 0, L = long ? 11 : 7, R = 30 + L / 2 - 2;
-        k.cone(long ? 6.2 : 4.3, L, Math.cos(a) * R, Math.sin(a) * R, -3, long ? 0xf0b060 : 0xffd890, { rz: a - Math.PI / 2, seg: 4, c2: 0xfff0d0 });
-      }
-    }
-    this.group.add(new THREE.Mesh(k.build(), MAT.glow));
-
-    this.eyeMat = new THREE.MeshBasicMaterial({ color: moon ? 0xe8d8a0 : 0xfff6dc, fog: false });
-    const pupilMat = new THREE.MeshBasicMaterial({ color: 0x120c34, fog: false });
-    const lidMat = new THREE.MeshBasicMaterial({ color: moon ? 0x7c808e : 0xecb46c, fog: false });
-    const lashMat = new THREE.MeshBasicMaterial({ color: line, fog: false });
-    this.lids = []; this.pupils = []; this.lashes = []; this.brows = [];
-    for (const side of [-1, 1]) {
-      const eye = new THREE.Group();
-      eye.position.set(side * 11.5, 7, 24.5);
-      eye.add(new THREE.Mesh(new THREE.SphereGeometry(6, 14, 10), this.eyeMat));
-      const pupil = new THREE.Mesh(new THREE.SphereGeometry(2.4, 10, 8), pupilMat);
-      pupil.scale.set(.6, moon ? 1.3 : .9, .35); pupil.position.z = 5.6;
-      const lid = new THREE.Mesh(new THREE.SphereGeometry(6.4, 14, 8, 0, TAU, 0, Math.PI / 2), lidMat);
-      const lash = new THREE.Mesh(new THREE.TorusGeometry(4.5, .5, 5, 12, Math.PI), lashMat);
-      lash.rotation.z = Math.PI; lash.position.set(0, 1.2, 5.3);
-      const brow = new THREE.Mesh(new THREE.BoxGeometry(12, 1.7, 1.5), lashMat);
-      brow.position.set(0, 8.2, 2.8);
-      eye.add(pupil, lid, lash, brow);
-      this.lids.push(lid); this.pupils.push(pupil); this.lashes.push(lash); this.brows.push({ m: brow, side });
-      this.group.add(eye);
-    }
-    const c = document.createElement('canvas'); c.width = c.height = 128;
-    const g = c.getContext('2d'), rad = g.createRadialGradient(64, 64, 18, 64, 64, 64);
-    rad.addColorStop(0, moon ? 'rgba(170,180,205,.34)' : 'rgba(255,214,150,.5)');
-    rad.addColorStop(1, moon ? 'rgba(60,70,110,0)' : 'rgba(255,150,70,0)');
-    g.fillStyle = rad; g.fillRect(0, 0, 128, 128);
-    this.halo = new THREE.Sprite(new THREE.SpriteMaterial({ map: new THREE.CanvasTexture(c), transparent: true, depthWrite: false, blending: THREE.AdditiveBlending, fog: false }));
-    this.halo.scale.setScalar(moon ? 130 : 170);
-    this.halo.position.z = -12;
-    this.group.add(this.halo);
-    this.group.scale.setScalar(moon ? 4.4 : 3.6);
-    this.group.traverse(o => { o.renderOrder = -5; });
-    this.setOpen(0);
+    this.u = { open: { value: 0 }, t: { value: 0 }, angry: { value: 0 }, look: { value: 0 } };
+    const m = new THREE.Mesh(new THREE.PlaneGeometry(2.6, 2.6), new THREE.ShaderMaterial({ uniforms: this.u, vertexShader: BODY_VS, fragmentShader: kind === 'moon' ? MOON_FS : SUN_FS, transparent: true, premultipliedAlpha: true, depthWrite: false, fog: false, toneMapped: false }));
+    m.renderOrder = -5; m.frustumCulled = false;
+    this.group.add(m);
+    this.group.scale.setScalar(kind === 'moon' ? 132 : 108);
   }
-  setOpen(v) {
-    this.open = v;
-    for (const l of this.lids) l.rotation.x = lerp(Math.PI * .5, -.42, v);
-    for (const p of this.pupils) p.visible = v > .16;
-    for (const l of this.lashes) l.visible = v <= .16;
-    for (const b of this.brows) b.m.rotation.z = b.side * lerp(-.14, .34, v);
-  }
+  setOpen(v) { this.open = v; this.u.open.value = v; }
   update(dt, t, pos, cam, goal, angry) {
-    this.setOpen(damp(this.open, goal, goal > this.open ? 7 : 3, dt));
+    if (this.kind === 'moon') this.setOpen(damp(this.open, goal, goal > this.open ? 1.6 : 2.6, dt));
     this.group.position.copy(pos);
     this.group.lookAt(cam.position);
-    this.group.rotateZ(Math.sin(t * .22) * .05);
-    if (this.kind === 'moon') this.eyeMat.color.lerp(new THREE.Color(angry ? 0xff4a2a : 0xe8d8a0), 1 - Math.exp(-5 * dt));
-    const lx = Math.sin(t * .9) * .9;
-    for (const p of this.pupils) p.position.x = lx;
+    this.u.t.value = t;
+    this.u.angry.value = damp(this.u.angry.value, angry ? 1 : 0, 2.5, dt);
+    this.u.look.value = Math.sin(t * .37) * .07;
   }
 }
 

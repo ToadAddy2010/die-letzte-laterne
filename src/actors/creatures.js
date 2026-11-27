@@ -1,6 +1,6 @@
 import * as THREE from '../../vendor/three.module.js';
 import { mergeGeometries } from '../../vendor/addons/BufferGeometryUtils.js';
-import { Kit, MAT } from '../core/gfx.js';
+import { Kit, MAT, psx } from '../core/gfx.js';
 import { G } from '../game/state.js';
 import { makeBlob } from './models.js';
 
@@ -117,7 +117,7 @@ const insectLegPart = (R, pts, n, c, mat, r = .09, tip = c) => R.part([`${n}a`, 
 });
 
 function buildSpider(s) {
-  const c = s.c1 ?? 0x3a2a3a, c2 = s.c2 ?? 0x4a7a52, eye = s.eye ?? 0x57f0a0, R = new RB(221), gear = c2 === 0xc98a33;
+  const c = s.c1 ?? 0x3a2a3a, c2 = s.c2 ?? 0x4a7a52, eye = s.eye ?? 0x57f0a0, R = new RB(221), gear = s.gear ?? c2 === 0xc98a33;
   R.b('root', null, 0, 0, 0); R.b('body', 'root', 0, 1, .22); R.b('abd', 'body', 0, 1.16, -.46); R.b('abd2', 'abd', 0, 1.2, -1.2); R.b('head', 'body', 0, 1, .86);
   for (const [x, sd] of SIDES) { R.b(`fg${sd}`, 'head', x * .13, .8, 1.14); R.b(`fgt${sd}`, `fg${sd}`, x * .1, .46, 1.26); }
   R.part(['abd', 'abd2'], k => {
@@ -166,7 +166,7 @@ function buildScorpion(s) {
 }
 
 function buildDragon(s) {
-  const c = s.c1 ?? 0x4a6ad8, c2 = s.c2 ?? 0xcfe6ff, eye = s.eye ?? 0xffffff, skel = c === 0xbdb6a0, R = new RB(261), mem = skel ? 0x4a4438 : 0x24305e;
+  const c = s.c1 ?? 0x4a6ad8, c2 = s.c2 ?? 0xcfe6ff, eye = s.eye ?? 0xffffff, skel = s.skel ?? c === 0xbdb6a0, R = new RB(261), mem = skel ? 0x4a4438 : 0x24305e;
   R.b('root', null, 0, 0, 0); R.b('hips', 'root', 0, 3.5, -2.1); R.b('spine', 'hips', 0, 3.8, 0); R.b('chest', 'spine', 0, 3.9, 1.9);
   const N = [[0, 4.5, 3.05], [0, 5.3, 3.85], [0, 6.05, 4.75], [0, 6.45, 5.75]]; N.forEach((p, i) => R.b(`n${i}`, i ? `n${i - 1}` : 'chest', ...p));
   R.b('head', 'n3', 0, 6.55, 6.05); R.b('jaw', 'head', 0, 6.12, 6.3);
@@ -272,24 +272,27 @@ function buildBat(s) {
 }
 
 function buildShroom(s) {
-  const c = s.c1 ?? 0xb82f4d, c2 = s.c2 ?? 0xff6a7d, st = 0xe8ded0, R = new RB(301);
+  const c = s.c1 ?? 0xb82f4d, c2 = s.c2 ?? 0xff6a7d, st = 0xb4a690, R = new RB(301);
   R.b('root', null, 0, 0, 0); R.b('body', 'root', 0, .3, 0); R.b('top', 'body', 0, .78, 0); R.b('cap', 'top', 0, 1.06, 0);
   for (const [x, sd] of SIDES) { R.b(`a${sd}`, 'body', x * .47, .66, .02); R.b(`h${sd}`, `a${sd}`, x * .66, .28, .12); R.b(`l${sd}`, 'root', x * .23, .24, .03); R.b(`f${sd}`, `l${sd}`, x * .25, .04, .1); }
   R.part(['body', 'top', 'cap'], k => {
-    k.loft([[.04, .4, .4], [.14, .56, .54], [.36, .57, .55], [.66, .47, .46], [.94, .39, .39], [1.1, .26, .26]], 0, 0, 0, st, { mat: 'plaster', seg: 22, c2: 0xf6ecdc, fold: .035, foldN: 7 });
+    k.loft([[.04, .4, .4], [.14, .56, .54], [.36, .57, .55], [.66, .47, .46], [.94, .39, .39], [1.1, .26, .26]], 0, 0, 0, st, { mat: 'bark', seg: 22, c2: 0x9a8e7a, fold: .06, foldN: 9, foldP: 1.4 });
+    for (let i = 0; i < 14; i++) { const a = i * 2.4, y = .18 + (i % 7) * .12, R = .5 - Math.abs(y - .45) * .3; k.ball(.05 + (i % 3) * .018, Math.cos(a) * R, y, Math.sin(a) * R, 0x6a5a48, { mat: 'bark', sy: .7 }); }
     for (const x of [-1, 1]) {
-      k.ball(.115, x * .19, .63, .445, 0xfff8ec, { mat: 'plain', sz: .55 }); k.ball(.066, x * .185, .625, .498, 0x18121e, { mat: 'plain', sz: .6 }); k.ball(.02, x * .185 + .022, .65, .53, 0xffffff, { glow: 1 });
-      k.tube([[x * .07, .8, .43], [x * .2, .85, .43], [x * .33, .77, .37]], [.012, .025, .008], 0x4a3026, { mat: 'plain', seg: 4 });
-      k.ball(.075, x * .34, .47, .385, 0xffb0a0, { mat: 'skin', sy: .6, sz: .4 });
+      k.ball(.12, x * .17, .64, .43, 0x120c0a, { mat: 'plain', sz: .5, sy: .82, rz: x * -.4 });
+      k.ball(.026, x * .17, .64, .475, s.eye ?? 0xd8f070, { glow: 1 });
+      k.tube([[x * .05, .78, .45], [x * .17, .74, .47], [x * .29, .79, .41]], [.018, .03, .01], 0x3a2c22, { mat: 'bark', seg: 4 });
+      for (let i = 0; i < 3; i++) k.tube([[x * (.2 + i * .07), .9 - i * .05, .36], [x * (.25 + i * .08), .62 - i * .06, .43], [x * (.22 + i * .07), .38, .45]], [.012, .016, .006], 0x5a4838, { mat: 'bark', seg: 3, sub: 2 });
     }
-    k.tube([[-.12, .42, .51], [0, .36, .535], [.12, .42, .51]], [.016, .024, .016], 0x2a1820, { mat: 'plain', seg: 4 });
+    k.ball(.17, 0, .4, .43, 0x0e0806, { mat: 'plain', sy: .45, sz: .42 });
+    for (let i = 0; i < 7; i++) { const u = i / 6 * 2 - 1; k.cone(.018, .07, u * .13, .45, .5 - Math.abs(u) * .04, 0xc8c0a0, { mat: 'bone', seg: 3, rx: Math.PI }); k.cone(.016, .06, u * .12, .35, .49 - Math.abs(u) * .04, 0xc8c0a0, { mat: 'bone', seg: 3 }); }
   });
   R.part(['cap'], k => {
     k.at(0, 1.06, 0);
     k.loft([[-.07, .96, .96], [-.02, 1.08, 1.08], [.15, 1.03, 1.03], [.42, .84, .84], [.65, .5, .5], [.78, .17, .17], [.82, .01, .01]], 0, 0, 0, c, { mat: 'plaster', c2, seg: 30, shape: a => 1 + Math.sin(a * 5 + .6) * .022 + Math.sin(a * 11) * .008 });
     k.loft([[-.105, .25, .25], [-.08, .98, .98]], 0, 0, 0, 0xf4e6d6, { mat: 'cloth', seg: 30, sub: 1 });
     for (let i = 0; i < 34; i++) { const a = i / 34 * TAU; k.box(.012, .05, .68, Math.cos(a) * .6, -.11, Math.sin(a) * .6, 0xd8c4b0, { mat: 'plain', ry: -a + HP, bevel: .003 }); }
-    for (let i = 0; i < 11; i++) { const a = i * 2.4, q = .18 + i * .075, y = .82 * Math.sqrt(Math.max(.03, 1 - q * q)) - .02; k.ball(.14 - (i % 3) * .022, Math.cos(a) * q, y, Math.sin(a) * q, 0xfff4dc, { glow: .55, sy: .5 }); }
+    for (let i = 0; i < 11; i++) { const a = i * 2.4, q = .18 + i * .075, y = .82 * Math.sqrt(Math.max(.03, 1 - q * q)) - .02; k.ball(.12 - (i % 3) * .022, Math.cos(a) * q, y, Math.sin(a) * q, 0xd8d0b0, { glow: .18, sy: .5, mat: 'plaster' }); }
     k.pop();
   });
   for (const [x, sd] of SIDES) {
@@ -429,6 +432,7 @@ function legs(m, amp, tuck, d) {
   });
 }
 
+const DEF = { wolf: [0x4a4a6a, 0x7a7aa0], spider: [0x3a2a3a, 0x4a7a52], scorpion: [0x8a3a20, 0xd87a3a], dragon: [0x4a6ad8, 0xcfe6ff], bat: [0x5b3f9a, 0x8e6fe0], shroom: [0xb82f4d, 0xff6a7d], ghost: [0x7ff2c8, 0x2a7a82] };
 const BUILD = { wolf: buildWolf, spider: buildSpider, scorpion: buildScorpion, dragon: buildDragon, bat: buildBat, shroom: buildShroom, ghost: buildGhost };
 const STRIDE = { wolf: .92, spider: 1.25, scorpion: 1.2, dragon: .42, bat: 0, shroom: 1.5, ghost: 0 };
 const SIZE = { wolf: [1.5, 1.5], spider: [1.5, 1.5], scorpion: [1.5, 1.5], dragon: [6, 7], bat: [2.5, 1.05], shroom: [1.9, 1.05], ghost: [2.5, 1.05] };
@@ -436,14 +440,20 @@ const TPL = new Map(), IDM = new THREE.Matrix4();
 
 export const CREATURES = Object.keys(BUILD);
 
+/** Gedämpfte, erdige Farben, damit Kreaturen neben den Figuren nicht wie Spielzeug wirken. */
+const HSL = { h: 0, s: 0, l: 0 }, TC = new THREE.Color();
+const mute = (hex, s = .66, l = .86) => { if (hex == null) return hex; TC.set(hex).getHSL(HSL); TC.setHSL(HSL.h, HSL.s * s, HSL.l * l); return TC.getHex(); };
+const GHOST = psx(new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, opacity: .68, depthWrite: false }));
+
 export function makeCreature(spec) {
   const key = `${spec.kind}_${spec.c1}_${spec.c2}_${spec.eye}`;
-  let T = TPL.get(key); if (!T) { T = BUILD[spec.kind](spec); TPL.set(key, T); }
+  let T = TPL.get(key);
+  if (!T) { T = BUILD[spec.kind]({ ...spec, gear: spec.c2 === 0xc98a33, skel: spec.c1 === 0xbdb6a0, c1: mute(spec.c1 ?? DEF[spec.kind]?.[0]), c2: mute(spec.c2 ?? DEF[spec.kind]?.[1], .7, .9), eye: spec.eye }); TPL.set(key, T); }
   const S = spec.scale ?? 1, root = new THREE.Group(), inner = new THREE.Group();
   root.add(inner); inner.scale.setScalar(S);
   const bones = T.defs.map(d => { const b = new THREE.Bone(); b.name = d.n; return b; }), b = {};
   T.defs.forEach((d, i) => { b[d.n] = bones[i]; if (d.p >= 0) { const q = T.defs[d.p]; bones[i].position.set(d.x - q.x, d.y - q.y, d.z - q.z); bones[d.p].add(bones[i]); } else bones[i].position.set(d.x, d.y, d.z); });
-  const mesh = new THREE.SkinnedMesh(T.geo, MAT.solid); mesh.add(bones[0]);
+  const mat = spec.kind === 'ghost' ? GHOST : MAT.solid, mesh = new THREE.SkinnedMesh(T.geo, mat); mesh.add(bones[0]); mesh.userData.base = mat;
   mesh.frustumCulled = false; mesh.castShadow = true; mesh.receiveShadow = true;
   mesh.updateMatrixWorld(true);
   const sk = new THREE.Skeleton(bones, T.inv ?? []); T.inv ??= sk.boneInverses;

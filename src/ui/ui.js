@@ -2,6 +2,7 @@ import * as THREE from '../../vendor/three.module.js';
 import { G } from '../game/state.js';
 import { Input } from '../core/input.js';
 import { TALENTS, TREES, FEATS } from '../data/extras.js';
+import { LANGS, tr, setLang, currentLang } from '../i18n/i18n.js';
 import { ITEMS, SPELLS, SHOPS, TOWN_TIER } from '../data/items.js';
 import { QUESTS } from '../data/quests.js';
 import { POIS, POI, REGIONS, REGION_INFO, WORLD } from '../data/world.js';
@@ -201,7 +202,7 @@ export class UI {
   letterbox(on) { G.audio?.setDuck(on ? .62 : 1); document.body.classList.toggle('cut', on); $('cutHint').style.display = on ? 'block' : 'none'; this.show(!on); if (!on) $('ending').style.display = 'none'; }
 
   // ── Stimmen aus der Laterne ──
-  whisper(name, lines) { (this.wq ??= []).push(...lines.map(t => ({ name, t }))); }
+  whisper(name, lines) { (this.wq ??= []).push(...lines.map(t => ({ name, t: tr(t) }))); }
   updateWhisper(dt) {
     const box = $('whisper');
     if (!this.wCur) {
@@ -209,7 +210,7 @@ export class UI {
       const w = this.wCur = this.wq.shift();
       w.i = 0; w.spoken = 0; w.hold = 1.5 + w.t.length * .045; w.voice = G.audio?.voiceFor(w.name);
       if (w.voice) w.voice.n = 0;
-      box.style.display = 'block'; box.querySelector('b').textContent = w.name; box.querySelector('span').textContent = '';
+      box.style.display = 'block'; box.querySelector('b').textContent = w.name; box.querySelector('span').dataset.notr = '1'; box.querySelector('span').textContent = '';
     }
     const w = this.wCur;
     if (G.mode !== 'play') return;
@@ -222,7 +223,7 @@ export class UI {
   }
 
   // ── Text ──
-  type(el, text, onDone, voice) { if (voice) voice.n = 0; this.typing = { el, text, i: 0, spoken: 0, onDone, voice }; el.textContent = ''; }
+  type(el, text, onDone, voice) { if (voice) voice.n = 0; text = tr(text); el.dataset.notr = '1'; this.typing = { el, text, i: 0, spoken: 0, onDone, voice }; el.textContent = ''; }
   updateType(dt) {
     const t = this.typing; if (!t) return;
     t.i += dt * 44;
@@ -246,7 +247,7 @@ export class UI {
     G.audio?.setDuck(.42);
     d.style.display = 'block'; $('dlgN').textContent = name; $('dlgR').textContent = role || '';
     this.opts = opts; const box = $('dlgOpts'); box.innerHTML = '';
-    opts.forEach((o, i) => { const b = document.createElement('button'); b.className = o.cls || ''; b.textContent = opts.length > 1 ? `${i + 1}. ${o.t}` : o.t; b.onclick = () => this.pick(i); box.appendChild(b); });
+    opts.forEach((o, i) => { const b = document.createElement('button'); b.className = o.cls || ''; b.textContent = opts.length > 1 ? `${i + 1}. ${tr(o.t)}` : tr(o.t); b.onclick = () => this.pick(i); box.appendChild(b); });
     this.type($('dlgText'), text, null, voice);
   }
   pick(i) { const o = this.opts[i]; if (!o) return; G.audio?.tick(); o.fn(); }
@@ -378,13 +379,13 @@ export class UI {
     for (let i = 0; i < this.fog.length; i++) { img.data[i * 4] = 10; img.data[i * 4 + 1] = 10; img.data[i * 4 + 2] = 34; img.data[i * 4 + 3] = this.fog[i] ? 0 : 214; }
     fc.putImageData(img, 0, 0); g.drawImage(this.fogC, 0, 0, S, S);
     g.font = 'bold 21px Term, monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
-    for (const r of REGIONS) { g.fillStyle = '#0008'; g.fillText(r.name.toUpperCase(), X(r.c[0]) + 2, Y(r.c[1]) - 42); g.fillStyle = '#f2e6c8c0'; g.fillText(r.name.toUpperCase(), X(r.c[0]), Y(r.c[1]) - 44); }
+    for (const r of REGIONS) { g.fillStyle = '#0008'; g.fillText(tr(r.name).toUpperCase(), X(r.c[0]) + 2, Y(r.c[1]) - 42); g.fillStyle = '#f2e6c8c0'; g.fillText(tr(r.name).toUpperCase(), X(r.c[0]), Y(r.c[1]) - 44); }
     g.font = '20px monospace';
     for (const p of POIS) {
       const seen = G.seen[p.id] || G.discovered[p.id]; if (!seen && p.type !== 'town') continue;
       const [ch, col] = POI_MARK[p.type], x = X(p.x), y = Y(p.z);
       g.fillStyle = '#000'; g.fillText(ch, x + 1.5, y + 1.5); g.fillStyle = p.type === 'shrine' && !G.discovered[p.id] ? '#778' : col; g.fillText(ch, x, y);
-      if (p.type === 'town') { g.font = '19px Term, monospace'; g.fillStyle = '#000'; g.fillText(p.name, x + 1, y + 17); g.fillStyle = '#ffe9b8'; g.fillText(p.name, x, y + 16); g.font = '20px monospace'; }
+      if (p.type === 'town') { g.font = '19px Term, monospace'; g.fillStyle = '#000'; g.fillText(tr(p.name), x + 1, y + 17); g.fillStyle = '#ffe9b8'; g.fillText(tr(p.name), x, y + 16); g.font = '20px monospace'; }
       if (p === this.mapSel) { g.strokeStyle = '#fff'; g.lineWidth = 2; g.strokeRect(x - 12, y - 12, 24, 24); }
     }
     g.font = '22px monospace';
@@ -407,10 +408,11 @@ export class UI {
   }
   settingsHtml() {
     const s = G.settings;
-    return `<div class="opt"><label>Lautstärke</label><input id="oV" type="range" min="0" max="1" step=".05" value="${s.volume}"></div><div class="opt"><label>Musik</label><input id="oM" type="range" min="0" max="1" step=".05" value="${s.music}"></div><div class="opt"><label>${Input.touch ? 'Kameratempo' : 'Mausempfindlichkeit'}</label><input id="oS" type="range" min=".3" max="2.5" step=".05" value="${s.sens}"></div><div class="opt"><label>Auflösung</label><select id="oL">${[[540, 'Niedrig (540p)'], [720, 'Mittel (720p)'], [900, 'Hoch (900p)'], [1080, 'Voll (1080p)'], [1440, 'Ultra (1440p)']].map(([v, t]) => `<option value="${v}" ${s.lines === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="opt"><label>Retro-Pixelfilter</label><input id="oRetro" type="checkbox" ${s.retro ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Sparmodus</label><input id="oLow" type="checkbox" ${s.low ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>${Input.touch ? 'Kamera Y umkehren' : 'Maus Y umkehren'}</label><input id="oI" type="checkbox" ${s.invertY ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Kamerawackeln</label><input id="oK" type="checkbox" ${s.shake ? 'checked' : ''} style="flex:0 0 auto"></div>`;
+    return `<div class="opt"><label data-notr="1">Sprache · Language · Idioma · भाषा</label><select id="oLang" data-notr="1">${LANGS.map(([k, n]) => `<option value="${k}" ${currentLang() === k ? 'selected' : ''}>${n}</option>`).join('')}</select></div><div class="opt"><label>Lautstärke</label><input id="oV" type="range" min="0" max="1" step=".05" value="${s.volume}"></div><div class="opt"><label>Musik</label><input id="oM" type="range" min="0" max="1" step=".05" value="${s.music}"></div><div class="opt"><label>${Input.touch ? 'Kameratempo' : 'Mausempfindlichkeit'}</label><input id="oS" type="range" min=".3" max="2.5" step=".05" value="${s.sens}"></div><div class="opt"><label>Auflösung</label><select id="oL">${[[540, 'Niedrig (540p)'], [720, 'Mittel (720p)'], [900, 'Hoch (900p)'], [1080, 'Voll (1080p)'], [1440, 'Ultra (1440p)']].map(([v, t]) => `<option value="${v}" ${s.lines === v ? 'selected' : ''}>${t}</option>`).join('')}</select></div><div class="opt"><label>Retro-Pixelfilter</label><input id="oRetro" type="checkbox" ${s.retro ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Sparmodus</label><input id="oLow" type="checkbox" ${s.low ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>${Input.touch ? 'Kamera Y umkehren' : 'Maus Y umkehren'}</label><input id="oI" type="checkbox" ${s.invertY ? 'checked' : ''} style="flex:0 0 auto"></div><div class="opt"><label>Kamerawackeln</label><input id="oK" type="checkbox" ${s.shake ? 'checked' : ''} style="flex:0 0 auto"></div>`;
   }
   bindSettings() {
     const s = G.settings, save = () => G.game.saveSettings();
+    $('oLang').onchange = async e => { s.lang = e.target.value; save(); await setLang(s.lang); G.audio?.tick(); };
     $('oV').oninput = e => { s.volume = +e.target.value; G.audio.applyVolume(); save(); };
     $('oM').oninput = e => { s.music = +e.target.value; G.audio.applyVolume(); save(); };
     $('oS').oninput = e => { s.sens = +e.target.value; save(); };
@@ -470,6 +472,7 @@ export class UI {
     else if (G.profiles?.cur) items.splice(items.findIndex(x => x[0] === 'Einstellungen'), 0, ['Profil wechseln', () => G.profileUI.pick()]);
     const box = $('menuBtns'); box.innerHTML = ''; box.style.display = '';
     if (G.profiles?.cur) { const u = document.createElement('div'); u.className = 'pfUser'; u.textContent = `Angemeldet als ${G.profiles.cur.name}`; box.appendChild(u); }
+    { const L = document.createElement('div'); L.className = 'langPick'; L.dataset.notr = '1'; for (const [k, n] of LANGS) { const b = document.createElement('button'); b.textContent = n; b.className = currentLang() === k ? 'on' : ''; b.onclick = async () => { G.settings.lang = k; G.game.saveSettings(); await setLang(k); G.audio?.tick(); for (const q of L.children) q.className = q === b ? 'on' : ''; }; L.appendChild(b); } box.appendChild(L); }
     for (const [t, fn] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = () => { G.audio.init(); G.audio.tick(); fn(); }; box.appendChild(b); }
   }
   titlePane(html, bind) { const p = $('titlePane'); p.style.display = 'block'; p.innerHTML = `${html}<div class="acts"><button id="paneX">Zurück</button></div>`; $('paneX').onclick = () => { p.style.display = 'none'; }; bind?.(); }

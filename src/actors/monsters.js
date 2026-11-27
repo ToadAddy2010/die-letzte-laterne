@@ -33,7 +33,7 @@ function prep(gltf, maps) {
   s.traverse(o => {
     if (!o.isMesh) return;
     o.frustumCulled = false; o.castShadow = true; o.receiveShadow = true;
-    const q = o.material; q.metalness = 0; q.metalnessMap = null; q.roughness = 1; q.emissiveIntensity = 2.4; q.side = THREE.FrontSide; q.needsUpdate = true;
+    const q = o.material; q.metalness = 0; q.metalnessMap = null; q.roughness = 1; q.emissiveIntensity = 1.15; q.color.multiplyScalar(.86); q.side = THREE.FrontSide; q.needsUpdate = true;
     if (o.name === 'body') body = o;
   });
   body.geometry.computeBoundingBox();
