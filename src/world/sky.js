@@ -146,7 +146,7 @@ void main(){
 }`;
 
 const tmpC = new THREE.Color(), tmpV = new THREE.Vector3();
-const col = { nTop: new THREE.Color(0x060820), nMid: new THREE.Color(0x1a1a46), dTop: new THREE.Color(0x3f6a94), dMid: new THREE.Color(0x98b2c4), dusk: new THREE.Color(0xd8824a) };
+const col = { nTop: new THREE.Color(0x050813), nMid: new THREE.Color(0x121828), dTop: new THREE.Color(0x3f6a94), dMid: new THREE.Color(0x98b2c4), dusk: new THREE.Color(0xd8824a) };
 
 export class Sky {
   constructor(scene, group) {
@@ -196,11 +196,11 @@ export class Sky {
     if (this.sun.group.visible) this.sun.update(dt, G.t, P.copy(cam.position).addScaledVector(this.sunDir, 1700), cam, day > .1 ? .85 : 0, false);
     const gaze = G.moonGaze > 0;
     if (this.moon.group.visible) this.moon.update(dt, G.t, P.copy(cam.position).addScaledVector(this.moonDir, 1500), cam, gaze ? 1 : G.forceMoonOpen ?? .0, gaze);
-    this.hemi.color.set(0x5a5e96).lerp(new THREE.Color(0xb4c6d8), day).lerp(col.dusk, dusk * .25);
+    this.hemi.color.set(0x56627f).lerp(new THREE.Color(0xb4c6d8), day).lerp(col.dusk, dusk * .25);
     this.hemi.groundColor.set(0x12141a).lerp(new THREE.Color(0x4a4234), day);
     this.hemi.intensity = lerp(1.75, 2.35, day);
     const main = s > 0 ? this.sunDir : this.moonDir;
-    this.dir.color.set(0x9098cc).lerp(new THREE.Color(0xfff0d8), day).lerp(tmpC.set(0xff9a55), dusk * .75);
+    this.dir.color.set(0x8c9cc4).lerp(new THREE.Color(0xfff0d8), day).lerp(tmpC.set(0xff9a55), dusk * .75);
     this.dir.intensity = lerp(1.15, 3.05, day);
     // Das Schattenraster rastet ein, damit Schattenkanten beim Laufen nicht flimmern.
     const snapG = 170 / 2048;
@@ -213,7 +213,7 @@ export class Sky {
     GFX.rimColor.value.copy(this.fogTarget).lerp(u.top.value, .4).multiplyScalar(1.5); GFX.rim.value = G.inDungeon ? .12 : lerp(.26, .14, day);
     GFX.skyC.value.copy(this.hemi.color).multiplyScalar(this.hemi.intensity * .55); GFX.gndC.value.copy(this.hemi.groundColor).multiplyScalar(this.hemi.intensity * .5);
     u.sunV.value.copy(main); u.sunC.value.copy(this.dir.color).multiplyScalar(s > 0 ? lerp(.5, 1.05, day) : .16);
-    u.clL.value.set(0x7a7cb4).lerp(tmpC.set(0xfaf6ee), day).lerp(tmpC.set(0xf4a874), dusk * .7); u.clS.value.set(0x12161f).lerp(tmpC.set(0x8d9aa8), day).lerp(tmpC.set(0x6a4a5a), dusk * .7); u.cover.value = .47 + Math.sin(G.t * .012) * .05;
+    u.clL.value.set(0x79849e).lerp(tmpC.set(0xfaf6ee), day).lerp(tmpC.set(0xf4a874), dusk * .7); u.clS.value.set(0x12161f).lerp(tmpC.set(0x8d9aa8), day).lerp(tmpC.set(0x6a4a5a), dusk * .7); u.cover.value = .47 + Math.sin(G.t * .012) * .05;
     R0.hazeK.value = G.inDungeon || G.settings.low ? 0 : .00125 + (region.id === 'moor' || region.id === 'forest' ? .00065 : 0); R0.hazeC.value.copy(this.fogTarget); R0.sunC.value.copy(this.dir.color).multiplyScalar(s > 0 ? lerp(.35, .6, day) : .1); R0.sunW.value.copy(main);
     const R = G.retro.u, shaftDir = s > -.05 ? this.sunDir : this.moonDir;
     P.copy(cam.position).addScaledVector(shaftDir, 1000).project(cam);

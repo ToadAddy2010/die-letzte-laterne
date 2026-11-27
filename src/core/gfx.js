@@ -434,8 +434,8 @@ function natural(t, hex, o, world) {
     if (glow) s *= .8;
     else if (deg > 190 && deg < 345) {
       if (leaf) { h = (92 + (deg - 230) * .2) / 360; s = Math.min(s, .6) * .56; l *= .7; }
-      else { const to = deg < 255 ? 226 : 300; h = (deg + (to - deg) * .38 * k) / 360; s *= 1 - .36 * k; }
-    } else if (deg >= 70) { h = (deg + (92 - deg) * .22 * k) / 360; s *= 1 - .16 * k; if (leaf) l *= .84; }
+      else { const to = deg < 255 ? 212 : 342; h = (deg + (to - deg) * .72 * k) / 360; s *= 1 - .64 * k; }
+    } else if (deg >= 70) { h = (deg + (92 - deg) * .34 * k) / 360; s *= 1 - .3 * k; if (leaf) l *= .84; }
     else s *= 1 - .17 * k;
     T0.setHSL(h, s, l, THREE.SRGBColorSpace);
     v = [T0.r, T0.g, T0.b]; NAT.set(key, v);
